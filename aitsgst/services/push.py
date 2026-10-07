@@ -137,12 +137,28 @@ class PushService:
 		if not c["create_if_missing"]:
 			raise PushProblem(f"Customer '{c['name']}' does not exist in the GST service and 'Create missing Customers' is off.")
 		doc = {
-			"customer_name": c["name"], "customer_type": c["customer_type"], "customer_group": c["customer_group"],
+			"customer_name": c["name"], "customer_type": c["customer_type"], "customer_group": self._customer_group(c["customer_group"]),
 			"territory": c["territory"], "gst_category": c["gst_category"], self.key_field: c["key"],
 		}
 		if c.get("gstin"):
 			doc["gstin"] = c["gstin"]
 		return self.client.insert("Customer", doc)["name"]
+
+	def _customer_group(self, configured: str | None) -> str:
+		"""ERPNext rejects a group (tree folder) Customer Group such as "All Customer Groups". Use the
+		configured one if it is a leaf, else the GST service's own default from Selling Settings."""
+		doc = self.client.get_doc("Customer Group", configured) if configured else None
+		if doc and not doc.get("is_group"):
+			return configured
+		default = (self.client.get_doc("Selling Settings", "Selling Settings") or {}).get("customer_group")
+		default_doc = self.client.get_doc("Customer Group", default) if default else None
+		if default_doc and not default_doc.get("is_group"):
+			return default
+		raise PushProblem(
+			f"Customer Group '{configured}' is a group (or does not exist) in the GST service, and its Selling Settings "
+			"has no non-group default Customer Group. Set a non-group Customer Group (e.g. Commercial) in "
+			"AITS GST Settings > Companies > GST Service Customer Group."
+		)
 
 	def _ensure_address(self, a: dict, customer_name: str) -> str:
 		found = self._find_by_key("Address", a["key"])

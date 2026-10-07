@@ -130,6 +130,26 @@ class TestPush(unittest.TestCase):
 		self.assertEqual(result["outcome"], "Blocked")
 		self.assertIn("Output GST Out-state - TTC", result["problems"][0])
 
+	def test_group_customer_group_falls_back_to_selling_settings_default(self):
+		# configured default "All Customer Groups" is a tree folder, which ERPNext rejects for a Customer
+		self.svc.push(NAME)
+		[customer] = self.cloud.docs["Customer"].values()
+		self.assertEqual(customer["customer_group"], "Commercial")
+
+	def test_configured_leaf_customer_group_is_used(self):
+		self.cloud.add("Customer Group", name="Dealers", is_group=0)
+		self.ctx.cfg.companies[s.COMPANY]["customer_group"] = "Dealers"
+		self.svc.push(NAME)
+		[customer] = self.cloud.docs["Customer"].values()
+		self.assertEqual(customer["customer_group"], "Dealers")
+
+	def test_no_usable_customer_group_blocks_clearly(self):
+		self.cloud.docs["Selling Settings"]["Selling Settings"]["customer_group"] = None
+		result = self.svc.push(NAME)
+		self.assertEqual(result["outcome"], "Blocked")
+		self.assertIn("non-group Customer Group", result["problems"][0])
+		self.assertEqual(self.cloud.count("insert", "Customer"), 0)
+
 	def test_customer_creation_off(self):
 		self.ctx.cfg.companies[s.COMPANY]["auto_create_customer"] = 0
 		result = self.svc.push(NAME)

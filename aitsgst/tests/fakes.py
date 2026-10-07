@@ -215,6 +215,9 @@ def seed_cloud_setup(cloud: FakeCloud):
 	cloud.add("UOM", name="Nos")
 	cloud.add("UOM", name="Box")
 	cloud.add("Stock Settings", name="Stock Settings", valuation_method="FIFO")
+	cloud.add("Customer Group", name="All Customer Groups", is_group=1)
+	cloud.add("Customer Group", name="Commercial", is_group=0)
+	cloud.add("Selling Settings", name="Selling Settings", customer_group="Commercial", territory="India")
 	cloud.add("Item Tax Template", name="GST 18% - TTCC", taxes=[{"tax_type": "Output Tax IGST - TTCC", "tax_rate": 18}])
 	cloud.add("Address", name="TTC-Billing", gstin=s.GSTIN, is_your_company_address=1)
 	cloud.methods["erpnext.controllers.accounts_controller.get_taxes_and_charges"] = lambda master_doctype, master_name: (
