@@ -148,7 +148,7 @@ class TestCancelEverywhere(Base):
 
 		result = self.cancel()  # run again: IRN step skipped
 		self.assertEqual(len(self.portal_calls()), 1)
-		self.assertEqual(result["steps"][0], f"Cloud invoice {CLOUD} cancelled")
+		self.assertEqual(result["steps"][0], "e-Invoice record closed")
 		self.assertEqual(self.inv()["docstatus"], 2)
 
 	def test_ambiguous_cloud_cancel_that_succeeded(self):
@@ -161,7 +161,7 @@ class TestCancelEverywhere(Base):
 		self.store.cancel_error = RuntimeError("Closing period")
 		with self.assertRaises(Blocked) as ctx:
 			self.cancel()
-		self.assertIn("Local cancel failed: Closing period", " ".join(ctx.exception.problems))
+		self.assertIn("Invoice cancel failed: Closing period", " ".join(ctx.exception.problems))
 		self.assertEqual(self.cloud_inv()["docstatus"], 2)
 		self.assertEqual(self.inv()["aitsgst_cloud_docstatus"], "Cancelled")
 		self.assertEqual(self.log.last()["status"], "Failed")

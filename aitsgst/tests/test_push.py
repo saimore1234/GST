@@ -51,7 +51,7 @@ class TestPush(unittest.TestCase):
 		self.assertIn("320810", self.cloud.docs["GST HSN Code"])
 
 		inv = self.inv()
-		self.assertEqual(inv["aitsgst_push_status"], "Pushed")
+		self.assertEqual(inv["aitsgst_push_status"], "Ready")
 		self.assertEqual(inv["aitsgst_cloud_invoice"], cloud_si["name"])
 		self.assertEqual(inv["aitsgst_recon_status"], "Match")
 		self.assertEqual(self.log.last()["status"], "Success")
@@ -61,12 +61,12 @@ class TestPush(unittest.TestCase):
 		result = self.svc.push(NAME)
 		self.assertEqual(result["outcome"], "Created")  # the draft exists, but...
 		self.assertEqual(self.inv()["aitsgst_recon_status"], "Mismatch")
-		self.assertIn("IGST: local 180.00 vs cloud 120.00", self.inv()["aitsgst_recon_detail"])
+		self.assertIn("IGST: invoice 180.00 vs GST service 120.00", self.inv()["aitsgst_recon_detail"])
 
 	def test_second_push_creates_nothing(self):
 		self.svc.push(NAME)
 		inserts = self.cloud.count("insert")
-		self.assertEqual(self.svc.push(NAME)["outcome"], "AlreadyPushed")
+		self.assertEqual(self.svc.push(NAME)["outcome"], "AlreadyReady")
 		self.assertEqual(self.cloud.count("insert"), inserts)
 
 	def test_adopts_invoice_already_on_cloud(self):
@@ -133,7 +133,7 @@ class TestPush(unittest.TestCase):
 	def test_customer_creation_off(self):
 		self.ctx.cfg.companies[s.COMPANY]["auto_create_customer"] = 0
 		result = self.svc.push(NAME)
-		self.assertIn("does not exist on the cloud site", result["problems"][0])
+		self.assertIn("does not exist in the GST service", result["problems"][0])
 
 	def test_adopts_hand_made_customer_by_name(self):
 		self.cloud.add("Customer", name="CUST-CLOUD-7", customer_name="Acme Builders")
@@ -148,7 +148,7 @@ class TestPush(unittest.TestCase):
 		self.assertIn("linked to a different record", result["problems"][0])
 
 	def test_deleted_cloud_invoice_is_not_recreated(self):
-		self.inv().update(aitsgst_push_status="Pushed", aitsgst_cloud_invoice="SINV-GONE")
+		self.inv().update(aitsgst_push_status="Ready", aitsgst_cloud_invoice="SINV-GONE")
 		result = self.svc.push(NAME)
 		self.assertEqual(result["outcome"], "Blocked")
 		self.assertEqual(self.cloud.count("insert"), 0)

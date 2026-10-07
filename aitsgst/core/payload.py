@@ -1,4 +1,4 @@
-"""Local Sales Invoice -> cloud draft Sales Invoice payload, plus every problem that
+"""Local Sales Invoice -> draft GST service record Sales Invoice payload, plus every problem that
 must block the push. Pure: takes plain dicts, does no I/O.
 
 Adapted from the SAP B1 Web Portal's ErpNextInvoiceMapper. The local invoice
@@ -68,7 +68,7 @@ def build_push_plan(
 
 	# ---------------------------------------------------------- document state
 	if si.get("docstatus") != 1:
-		p.append("Only submitted Sales Invoices can be pushed to cloud (this one is not submitted).")
+		p.append("Only submitted Sales Invoices can be prepared for e-invoicing (this one is not submitted).")
 	if not company_cfg:
 		p.append(f"Company '{si.get('company')}' is not mapped (or is disabled) in AITS GST Settings.")
 	items = si.get("items") or []
@@ -77,7 +77,7 @@ def build_push_plan(
 
 	currency = si.get("currency") or "INR"
 	if currency != "INR":
-		w.append(f"Foreign-currency invoice ({currency}, rate {si.get('conversion_rate')}). Check export / SEZ e-invoice details on cloud.")
+		w.append(f"Foreign-currency invoice ({currency}, rate {si.get('conversion_rate')}). Check export / SEZ e-invoice details in the GST service.")
 
 	# ---------------------------------------------------- company GSTIN safety
 	company_gstin = normalize_gstin(si.get("company_gstin"))
@@ -143,14 +143,14 @@ def build_push_plan(
 			},
 		})
 	if not shipping_address and billing_address:
-		w.append("No shipping address; the cloud will use the billing address.")
+		w.append("No shipping address; the billing address will be used.")
 
 	# ------------------------------------------------------------ tax template
 	taxes = si.get("taxes") or []
 	local_template = si.get("taxes_and_charges")
 	plan.cloud_tax_template = map_template(template_map, TAX_TEMPLATE, local_template)
 	if taxes and not local_template:
-		p.append("The invoice has tax rows but no Sales Taxes and Charges Template. The cloud copies tax rows from "
+		p.append("The invoice has tax rows but no Sales Taxes and Charges Template. Tax rows are copied from "
 		         "its own template, so set the template on the local invoice.")
 	if not taxes:
 		w.append("The invoice has no tax rows.")
@@ -229,7 +229,7 @@ def build_push_plan(
 		if not si.get("return_against"):
 			p.append("Credit note has no 'Return Against' invoice.")
 		elif not return_against_cloud:
-			p.append(f"Credit note is against {si.get('return_against')}, which has not been pushed to cloud yet. Push that invoice first.")
+			p.append(f"Credit note is against {si.get('return_against')}, which has not been prepared for e-invoicing yet. Push that invoice first.")
 
 	# ---------------------------------------------------------------- payload
 	remarks = f"Local ERPNext {si.get('name')}."

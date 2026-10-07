@@ -3,7 +3,7 @@
 Run this against a **cloud test site** whose India Compliance GST Settings are in **Sandbox Mode**,
 with the **sandbox test GSTIN** listed in India Compliance's documentation for the cloud's
 India Compliance version. Use a local test company mapped to that GSTIN.
-Tick in AITS GST Settings: *I confirm the cloud site is a TEST / SANDBOX site*. Leave *Allow production* OFF.
+Tick in AITS GST Settings: *I confirm the GST service is a TEST / SANDBOX setup*. Leave *Allow production* OFF.
 
 Record the local invoice name, cloud invoice name and Sync Log entries for each step.
 
@@ -48,7 +48,8 @@ Record the local invoice name, cloud invoice name and Sync Log entries for each 
 - [ ] Turn cloud GST Settings Sandbox Mode OFF -> every e-invoice / e-way bill / cancel action is Blocked ("PRODUCTION ... Allow production is off").
 - [ ] Sync Log entries contain no API key / secret / Authorization header.
 - [ ] `git grep -i -E "secret|api_key"` in the app shows no real credentials.
-- [ ] Cloud Site URL `http://...` is rejected.
+- [ ] GST Service URL `http://...` is rejected.
+- [ ] As a normal user, the Sales Invoice form, dialogs, messages and timeline never mention "cloud" or show the cloud invoice name.
 
 ## Go-live
 Only after A-F pass: on the **production** cloud site's GST Settings turn Sandbox Mode off with the

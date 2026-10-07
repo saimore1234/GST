@@ -31,36 +31,40 @@ def _f(fieldname, label, fieldtype, insert_after, **extra):
 
 
 FIELDS = [
-	_f("aitsgst_tab", "Cloud GST", "Tab Break", "remarks"),
-	_f("aitsgst_status_html", "Cloud GST Status", "HTML", "aitsgst_tab"),
-	# ---- push
-	_f("aitsgst_push_section", "Cloud Invoice", "Section Break", "aitsgst_status_html"),
-	_f("aitsgst_push_status", "Cloud Push Status", "Select", "aitsgst_push_section",
-	   options="\nQueued\nPushed\nFailed\nBlocked", in_standard_filter=1),
-	_f("aitsgst_cloud_invoice", "Cloud Invoice", "Data", "aitsgst_push_status", search_index=1),
-	_f("aitsgst_cloud_key", "Cloud Key", "Data", "aitsgst_cloud_invoice", search_index=1),
-	_f("aitsgst_cloud_docstatus", "Cloud Doc Status", "Data", "aitsgst_cloud_key"),
+	# User-visible labels never mention a second site: it is "the GST service". Internal fields
+	# (the other site's document name, key, status, totals check, raw QR text) are hidden.
+	_f("aitsgst_tab", "e-Invoice", "Tab Break", "remarks"),
+	_f("aitsgst_status_html", "e-Invoice Status Summary", "HTML", "aitsgst_tab"),
+	# ---- sync with the GST service
+	_f("aitsgst_push_section", "e-Invoice Sync", "Section Break", "aitsgst_status_html"),
+	_f("aitsgst_push_status", "e-Invoice Sync Status", "Select", "aitsgst_push_section",
+	   options="\nQueued\nReady\nFailed\nBlocked", in_standard_filter=1),
+	_f("aitsgst_cloud_invoice", "GST Service Reference", "Data", "aitsgst_push_status", search_index=1, hidden=1),
+	_f("aitsgst_cloud_key", "GST Service Key", "Data", "aitsgst_cloud_invoice", search_index=1, hidden=1),
+	_f("aitsgst_cloud_docstatus", "GST Service Record Status", "Data", "aitsgst_cloud_key", hidden=1),
 	_f("aitsgst_push_cb", None, "Column Break", "aitsgst_cloud_docstatus"),
-	_f("aitsgst_cloud_grand_total", "Cloud Grand Total", "Currency", "aitsgst_push_cb", options="currency"),
-	_f("aitsgst_recon_status", "Reconciliation", "Select", "aitsgst_cloud_grand_total", options="\nMatch\nMismatch"),
-	_f("aitsgst_recon_detail", "Reconciliation Detail", "Small Text", "aitsgst_recon_status"),
+	_f("aitsgst_cloud_grand_total", "GST Service Grand Total", "Currency", "aitsgst_push_cb", options="currency", hidden=1),
+	_f("aitsgst_recon_status", "Totals Check", "Select", "aitsgst_cloud_grand_total", options="\nMatch\nMismatch", hidden=1),
+	_f("aitsgst_recon_detail", "Totals Check Detail", "Small Text", "aitsgst_recon_status", hidden=1),
 	_f("aitsgst_last_error", "Last Error", "Small Text", "aitsgst_recon_detail"),
-	_f("aitsgst_last_synced", "Last Synced From Cloud", "Datetime", "aitsgst_last_error"),
+	_f("aitsgst_last_synced", "Last Synced", "Datetime", "aitsgst_last_error"),
 	# ---- e-invoice
-	_f("aitsgst_einv_section", "e-Invoice (generated on cloud)", "Section Break", "aitsgst_last_synced"),
+	_f("aitsgst_einv_section", "e-Invoice", "Section Break", "aitsgst_last_synced"),
 	_f("aitsgst_einvoice_status", "e-Invoice Status", "Select", "aitsgst_einv_section",
 	   options=_STATUS, in_standard_filter=1),
-	_f("aitsgst_irn", "IRN", "Data", "aitsgst_einvoice_status", print_hide=0, search_index=1),
+	_f("aitsgst_irn", "IRN No", "Data", "aitsgst_einvoice_status", print_hide=0, search_index=1),
 	_f("aitsgst_ack_no", "Ack No", "Data", "aitsgst_irn", print_hide=0),
 	_f("aitsgst_ack_date", "Ack Date", "Datetime", "aitsgst_ack_no", print_hide=0),
-	_f("aitsgst_signed_qr_code", "Signed QR Code", "Long Text", "aitsgst_ack_date"),
+	_f("aitsgst_signed_qr_code", "Signed QR Code", "Long Text", "aitsgst_ack_date", hidden=1),
 	_f("aitsgst_einv_cb", None, "Column Break", "aitsgst_signed_qr_code"),
-	_f("aitsgst_qr_html", "e-Invoice QR", "HTML", "aitsgst_einv_cb"),
+	# PNG rendered on this server from the signed QR; usable in any print format as <img src="{{ doc.aitsgst_qr_image }}">
+	_f("aitsgst_qr_image", "e-Invoice QR Code", "Attach Image", "aitsgst_einv_cb", print_hide=0),
+	_f("aitsgst_qr_html", "e-Invoice QR Preview", "HTML", "aitsgst_qr_image"),
 	_f("aitsgst_einvoice_cancel_reason", "e-Invoice Cancel Reason", "Data", "aitsgst_qr_html"),
 	_f("aitsgst_einvoice_cancelled_on", "e-Invoice Cancelled On", "Datetime", "aitsgst_einvoice_cancel_reason"),
 	_f("aitsgst_einvoice_cancelled_by", "e-Invoice Cancelled By", "Data", "aitsgst_einvoice_cancelled_on"),
 	# ---- e-way bill
-	_f("aitsgst_ewb_section", "e-Way Bill (generated on cloud)", "Section Break", "aitsgst_einvoice_cancelled_by"),
+	_f("aitsgst_ewb_section", "e-Way Bill", "Section Break", "aitsgst_einvoice_cancelled_by"),
 	_f("aitsgst_ewb_status", "e-Way Bill Status", "Select", "aitsgst_ewb_section",
 	   options=_STATUS, in_standard_filter=1),
 	_f("aitsgst_ewaybill", "e-Way Bill No", "Data", "aitsgst_ewb_status", print_hide=0, search_index=1),

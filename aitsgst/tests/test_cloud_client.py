@@ -100,7 +100,7 @@ class TestCloudClient(unittest.TestCase):
 		c, _ = client(FakeResponse(417, {"exc_type": "ValidationError", "_server_messages": json.dumps([json.dumps({"message": "<b>HSN</b> is mandatory"})])}))
 		with self.assertRaises(CloudError) as ctx:
 			c.insert("Sales Invoice", {})
-		self.assertEqual(ctx.exception.message, "Cloud ERPNext error (417): HSN is mandatory")
+		self.assertEqual(ctx.exception.message, "GST service error (417): HSN is mandatory")
 		self.assertFalse(ctx.exception.ambiguous)
 
 	def test_connection_errors_are_specific(self):

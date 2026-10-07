@@ -125,7 +125,8 @@ class TestWiring(FrappeTestCase):
 		pushed = frappe._dict(aitsgst_cloud_invoice="T/SD/1", aitsgst_cloud_docstatus="Submitted")
 		with self.assertRaises(frappe.ValidationError) as ctx:
 			events.block_cancel_with_live_documents(pushed)
-		self.assertIn("Cancel Everywhere", str(ctx.exception))
+		self.assertIn("Cancel Invoice (with IRN / e-Way Bill)", str(ctx.exception))
+		self.assertNotIn("T/SD/1", str(ctx.exception))  # never shows the other site's document name
 		# ...allowed once it is cancelled / deleted there
 		for status in ("Cancelled", "Deleted"):
 			events.block_cancel_with_live_documents(frappe._dict(pushed, aitsgst_cloud_docstatus=status))

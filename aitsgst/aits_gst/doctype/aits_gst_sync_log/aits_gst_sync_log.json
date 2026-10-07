@@ -61,7 +61,7 @@
   {
    "fieldname": "cloud_invoice",
    "fieldtype": "Data",
-   "label": "Cloud Invoice",
+   "label": "GST Service Reference",
    "read_only": 1
   },
   {
@@ -131,7 +131,7 @@
  "in_create": 1,
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-07 10:00:00.000000",
+ "modified": "2026-10-08 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "AITS GST",
  "name": "AITS GST Sync Log",

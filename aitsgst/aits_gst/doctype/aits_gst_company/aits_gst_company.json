@@ -36,11 +36,11 @@
    "reqd": 1
   },
   {
-   "description": "Exact Company name on the cloud site.",
+   "description": "Exact company name in the GST service.",
    "fieldname": "cloud_company",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Cloud Company",
+   "label": "GST Service Company",
    "reqd": 1
   },
   {
@@ -53,7 +53,7 @@
    "reqd": 1
   },
   {
-   "description": "Optional. When a local invoice came from SAP B1 (has SAP B1 DocEntry), the cloud key becomes \"{this code}|{DocEntry}\" — the same key the SAP B1 Web Portal uses, so an invoice the portal already pushed is adopted, not duplicated.",
+   "description": "Optional. When a local invoice came from SAP B1 (has SAP B1 DocEntry), the duplicate-check key becomes \"{this code}|{DocEntry}\" — the same key the SAP B1 Web Portal uses, so an invoice the portal already sent is reused, not duplicated.",
    "fieldname": "sap_company_code",
    "fieldtype": "Data",
    "label": "SAP Company Code (portal key)"
@@ -66,24 +66,24 @@
    "default": "0",
    "fieldname": "auto_create_customer",
    "fieldtype": "Check",
-   "label": "Create missing Customers on cloud"
+   "label": "Create missing Customers in GST service"
   },
   {
    "default": "0",
    "fieldname": "auto_create_item",
    "fieldtype": "Check",
-   "label": "Create missing Items on cloud"
+   "label": "Create missing Items in GST service"
   },
   {
    "default": "0",
    "depends_on": "auto_create_item",
-   "description": "Off (default): items are created on cloud as non-stock items, since stock is not kept there.",
+   "description": "Off (default): items are created in the GST service as non-stock items, since stock is not kept there.",
    "fieldname": "create_items_as_stock_items",
    "fieldtype": "Check",
    "label": "Create Items as stock items"
   },
   {
-   "description": "Cloud item_code = prefix + local item_code.",
+   "description": "GST service item code = prefix + item code.",
    "fieldname": "item_code_prefix",
    "fieldtype": "Data",
    "label": "Item Code Prefix"
@@ -92,25 +92,25 @@
    "default": "All Customer Groups",
    "fieldname": "customer_group",
    "fieldtype": "Data",
-   "label": "Cloud Customer Group (new customers)"
+   "label": "GST Service Customer Group (new customers)"
   },
   {
    "default": "All Territories",
    "fieldname": "territory",
    "fieldtype": "Data",
-   "label": "Cloud Territory (new customers)"
+   "label": "GST Service Territory (new customers)"
   },
   {
    "default": "All Item Groups",
    "fieldname": "item_group",
    "fieldtype": "Data",
-   "label": "Cloud Item Group (new items)"
+   "label": "GST Service Item Group (new items)"
   }
  ],
  "index_web_pages_for_search": 0,
  "istable": 1,
  "links": [],
- "modified": "2026-10-07 10:00:00.000000",
+ "modified": "2026-10-08 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "AITS GST",
  "name": "AITS GST Company",

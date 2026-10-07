@@ -15,7 +15,7 @@ class Base(unittest.TestCase):
 	def setUp(self):
 		self.ctx = fakes.make_ctx()
 		self.cloud, self.store, self.log = self.ctx.client, self.ctx.store, self.ctx.log
-		self.store.add_invoice(aitsgst_push_status="Pushed", aitsgst_cloud_invoice=CLOUD, aitsgst_recon_status="Match")
+		self.store.add_invoice(aitsgst_push_status="Ready", aitsgst_cloud_invoice=CLOUD, aitsgst_recon_status="Match")
 		self.cloud.add("Sales Invoice", name=CLOUD, docstatus=0, company_gstin=s.GSTIN, billing_address_gstin=s.CUSTOMER_GSTIN,
 		               gst_category="Registered Regular", posting_date="2026-10-07")
 		self.cloud.add("GST Settings", name="GST Settings", enable_api=1, enable_e_invoice=1, enable_e_waybill=1, sandbox_mode=1,
@@ -102,7 +102,7 @@ class TestEInvoice(Base):
 			self.svc.generate_e_invoice(NAME, confirm=True)
 		text = " ".join(ctx.exception.problems)
 		self.assertIn("B2B", text)
-		self.assertIn("do not match the local invoice", text)
+		self.assertIn("do not match this invoice", text)
 		self.assertIn("no e-Invoice API credentials", text)
 		self.assertEqual(self.log.last()["status"], "Blocked")
 
@@ -249,7 +249,7 @@ class TestSyncBack(Base):
 		inv = self.inv()
 		self.assertEqual(inv["aitsgst_einvoice_status"], "Cancelled")
 		self.assertEqual(inv["aitsgst_einvoice_cancel_reason"], "Duplicate")
-		self.assertEqual(inv["aitsgst_einvoice_cancelled_by"], "cloud")
+		self.assertEqual(inv["aitsgst_einvoice_cancelled_by"], "GST service")
 		self.assertFalse(self.svc.refresh(NAME)["changed"])
 
 	def test_ewb_generated_on_cloud_reflects_locally(self):

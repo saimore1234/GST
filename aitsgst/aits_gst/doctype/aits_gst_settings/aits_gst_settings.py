@@ -18,9 +18,9 @@ def validate_cloud_url(url: str | None) -> str | None:
 	url = url.strip().rstrip("/")
 	parsed = urlparse(url)
 	if parsed.scheme != "https" or not parsed.hostname:
-		frappe.throw(_("Cloud Site URL must start with https:// (plain http is not allowed)."))
+		frappe.throw(_("GST Service URL must start with https:// (plain http is not allowed)."))
 	if parsed.path.strip("/") or parsed.query or parsed.fragment or parsed.username or parsed.password:
-		frappe.throw(_("Cloud Site URL must be the site root only, e.g. https://yoursite.m.erpnext.com"))
+		frappe.throw(_("GST Service URL must be the site root only, e.g. https://example.com"))
 	return url
 
 
@@ -45,7 +45,7 @@ class AITSGSTSettings(Document):
 		self._validate_companies()
 
 		if self.enabled and not (self.cloud_url and self.api_key and self.get_password("api_secret", raise_exception=False)):
-			frappe.throw(_("Cloud Site URL, API Key and API Secret are required before enabling."))
+			frappe.throw(_("GST Service URL, API Key and API Secret are required before enabling."))
 
 	def _validate_site_code(self):
 		code = (self.local_site_code or "").strip()
@@ -98,6 +98,6 @@ def get_local_ic_warning() -> str | None:
 	mode = "SANDBOX" if gst.get("sandbox_mode") else "PRODUCTION"
 	return _(
 		"This LOCAL site's India Compliance has the API enabled for {0} in {1} mode. "
-		"IRNs and e-way bills must be generated only on the cloud site; otherwise the same invoice can be "
+		"IRNs and e-way bills must be generated only through the GST service; otherwise the same invoice can be "
 		"registered twice. Disable e-Invoice / e-Waybill in local GST Settings, or make sure no user generates them here."
 	).format(" and ".join(enabled), mode)

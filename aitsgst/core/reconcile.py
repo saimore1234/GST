@@ -47,10 +47,10 @@ def reconcile(local: dict, cloud: dict) -> tuple[str, str, float | None]:
 	# Rounding settings may differ between sites: accept rounded-vs-rounded too.
 	total_ok = total_ok or (local_rounded and cloud_rounded and abs(cloud_rounded - local_rounded) <= TOLERANCE)
 	if total_ok:
-		notes.append(f"Total: local {local_grand:.2f} = cloud {float(cloud_grand or 0):.2f}.")
+		notes.append(f"Total: invoice {local_grand:.2f} = GST service {float(cloud_grand or 0):.2f}.")
 	else:
 		cloud_text = f"{float(cloud_grand):.2f}" if cloud_grand is not None else "n/a"
-		differences.append(f"Total: local {local_grand:.2f} vs cloud {cloud_text}.")
+		differences.append(f"Total: invoice {local_grand:.2f} vs GST service {cloud_text}.")
 
 	local_tax, cloud_tax = tax_summary(local), tax_summary(cloud)
 	for kind in sorted(set(("CGST", "SGST", "IGST", "CESS")) | set(local_tax) | set(cloud_tax)):
@@ -58,9 +58,9 @@ def reconcile(local: dict, cloud: dict) -> tuple[str, str, float | None]:
 		if lv == 0 and cv == 0:
 			continue
 		if abs(lv - cv) > TOLERANCE:
-			differences.append(f"{kind}: local {lv:.2f} vs cloud {cv:.2f}.")
+			differences.append(f"{kind}: invoice {lv:.2f} vs GST service {cv:.2f}.")
 		else:
-			notes.append(f"{kind}: local {lv:.2f} = cloud {cv:.2f}.")
+			notes.append(f"{kind}: invoice {lv:.2f} = GST service {cv:.2f}.")
 
 	cloud_total = float(cloud_grand) if cloud_grand is not None else None
 	if differences:

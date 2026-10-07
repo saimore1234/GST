@@ -1,5 +1,5 @@
 """Scheduler jobs: push retries with backoff, and polling the cloud for changes
-(e.g. an IRN cancelled or a vehicle updated directly on the cloud site).
+(e.g. an IRN cancelled or a vehicle updated directly in the GST service).
 
 Only idempotent work runs unattended: a retried push looks the invoice up by key
 before creating, and polling only reads. Nothing is generated, cancelled or
@@ -43,7 +43,7 @@ def retry_failed_pushes():
 	)
 	for row in due:
 		frappe.db.set_value("AITS GST Sync Log", row.name, "status", "Retried", update_modified=False)
-		if frappe.db.get_value("Sales Invoice", row.reference_name, "aitsgst_push_status") != "Pushed":
+		if frappe.db.get_value("Sales Invoice", row.reference_name, "aitsgst_push_status") != "Ready":
 			enqueue_push(row.reference_name, retry_count=(row.retry_count or 0) + 1)
 	frappe.db.commit()
 
@@ -60,7 +60,7 @@ def poll_status():
 	# Recent pushed invoices, plus any with a live e-way bill regardless of age.
 	local = frappe.get_all(
 		"Sales Invoice",
-		filters={"aitsgst_push_status": "Pushed", "aitsgst_cloud_invoice": ["is", "set"]},
+		filters={"aitsgst_push_status": "Ready", "aitsgst_cloud_invoice": ["is", "set"]},
 		or_filters={"posting_date": [">=", since], "aitsgst_ewb_status": "Generated"},
 		fields=["name", "aitsgst_cloud_invoice", "aitsgst_cloud_docstatus", "aitsgst_irn", "aitsgst_einvoice_status",
 		        "aitsgst_ewaybill", "aitsgst_ewb_status", "aitsgst_ewb_valid_upto", "aitsgst_vehicle_no"],
@@ -85,7 +85,7 @@ def poll_status():
 					ctx.store.update_invoice(local_row.name, {"aitsgst_cloud_docstatus": "Deleted", "aitsgst_last_synced": now_datetime()})
 					from aitsgst.services.context import notify_managers
 
-					notify_managers(local_row.name, f"Cloud invoice {missing} (for {local_row.name}) was deleted on the cloud site.")
+					notify_managers(local_row.name, f"The e-invoice record of {local_row.name} was deleted in the GST service.")
 					changed += 1
 			except CloudError:
 				errors += 1
@@ -100,7 +100,7 @@ def poll_status():
 				errors += 1
 	if changed or errors:
 		ctx.log.write("Status Poll", "Failed" if errors else "Success", None,
-		              f"Checked {len(names)} invoice(s): {changed} updated from cloud, {errors} error(s).")
+		              f"Checked {len(names)} invoice(s): {changed} updated from the GST service, {errors} error(s).")
 
 
 def _looks_changed(local, cloud) -> bool:
@@ -129,7 +129,7 @@ def _looks_changed(local, cloud) -> bool:
 
 
 def cancel_local_after_cloud(name: str):
-	"""Only runs when 'Auto-cancel local invoice when cancelled on cloud' is ON."""
+	"""Only runs when 'Auto-cancel local invoice when cancelled in the GST service' is ON."""
 	from aitsgst.services.context import LocalStore, SyncLog, notify_managers
 
 	frappe.set_user("Administrator")
@@ -138,16 +138,16 @@ def cancel_local_after_cloud(name: str):
 	store, log = LocalStore(), SyncLog()
 	problems = store.local_cancel_problems(name)
 	if problems:
-		log.write("Cancel Everywhere", "Blocked", name, "Cancelled on cloud; local auto-cancel blocked: " + " ".join(problems))
-		notify_managers(name, f"{name} was cancelled on cloud but could not be cancelled here automatically: {' '.join(problems)}")
+		log.write("Cancel Everywhere", "Blocked", name, "Cancelled in the GST service; local auto-cancel blocked: " + " ".join(problems))
+		notify_managers(name, f"{name} was cancelled in the GST service but could not be cancelled here automatically: {' '.join(problems)}")
 		return
 	try:
 		store.cancel_invoice(name)
-		log.write("Cancel Everywhere", "Success", name, "Cancelled locally because it was cancelled on the cloud site.")
+		log.write("Cancel Everywhere", "Success", name, "Cancelled locally because it was cancelled in the GST service.")
 	except Exception as e:
 		frappe.db.rollback()
-		log.write("Cancel Everywhere", "Failed", name, f"Cancelled on cloud; local auto-cancel failed: {e}")
-		notify_managers(name, f"{name} was cancelled on cloud but the automatic local cancel failed. Cancel it manually.")
+		log.write("Cancel Everywhere", "Failed", name, f"Cancelled in the GST service; local auto-cancel failed: {e}")
+		notify_managers(name, f"{name} was cancelled in the GST service but the automatic local cancel failed. Cancel it manually.")
 
 
 def refresh_one(name: str):

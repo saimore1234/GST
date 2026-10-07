@@ -1,4 +1,4 @@
-"""Whitelisted endpoints behind the Sales Invoice "Cloud GST" buttons.
+"""Whitelisted endpoints behind the Sales Invoice "e-Invoice" buttons.
 
 Every endpoint requires the AITS GST Manager (or System Manager) role AND read
 permission on the invoice. Irreversible actions (generate / cancel IRN or
@@ -46,7 +46,7 @@ def _run(fn):
 		items = "".join(f"<li>{escape_html(p)}</li>" for p in e.problems)
 		frappe.throw(f"<ul>{items}</ul>", title=e.headline)
 	except CloudError as e:
-		frappe.throw(escape_html(e.message), title=_("Cloud ERPNext"))
+		frappe.throw(escape_html(e.message), title=_("GST service"))
 
 
 def _values(values) -> dict:
@@ -155,7 +155,7 @@ def get_transport_defaults(name: str):
 # ======================================================================= setup
 @frappe.whitelist(methods=["POST"])
 def test_connection():
-	"""Read-only checks against the cloud site. Never creates or changes anything there."""
+	"""Read-only checks against the GST service. Never creates or changes anything there."""
 	require_role()
 	checks = []
 
@@ -172,7 +172,7 @@ def test_connection():
 
 	try:
 		user = client.call_get("frappe.auth.get_logged_user")
-		check("Credentials", True, f"Logged in on cloud as {user}")
+		check("Credentials", True, f"Logged in to the GST service as {user}")
 	except CloudError as e:
 		check("Credentials", False, e.message)
 		return _checks_result(checks)
@@ -182,35 +182,35 @@ def test_connection():
 			continue
 		try:
 			doc = client.get_doc("Company", row["cloud_company"])
-			check(f"Cloud company for {company}", doc, row["cloud_company"] if doc else f"'{row['cloud_company']}' not found on cloud")
+			check(f"GST service company for {company}", doc, row["cloud_company"] if doc else f"'{row['cloud_company']}' not found in the GST service")
 		except CloudError as e:
-			check(f"Cloud company for {company}", False, e.message)
+			check(f"GST service company for {company}", False, e.message)
 
 	try:
 		gst = client.get_doc("GST Settings", "GST Settings")
-		if check("Cloud GST Settings readable", gst is not None, "" if gst else "API user cannot read GST Settings"):
-			check("Cloud India Compliance API enabled", gst.get("enable_api"))
-			check("Cloud e-Invoice enabled", gst.get("enable_e_invoice"))
-			check("Cloud e-Waybill enabled", gst.get("enable_e_waybill"))
+		if check("GST service settings readable", gst is not None, "" if gst else "API user cannot read GST Settings"):
+			check("GST service India Compliance API enabled", gst.get("enable_api"))
+			check("GST service e-Invoice enabled", gst.get("enable_e_invoice"))
+			check("GST service e-Waybill enabled", gst.get("enable_e_waybill"))
 			sandbox = bool(gst.get("sandbox_mode"))
-			check("Cloud GST mode", sandbox or cfg.allow_production,
+			check("GST service mode", sandbox or cfg.allow_production,
 			      "SANDBOX" if sandbox else "PRODUCTION (live GST portal)" + ("" if cfg.allow_production else " - blocked until 'Allow production' is checked"))
 	except CloudError as e:
-		check("Cloud GST Settings readable", False, e.message)
+		check("GST service settings readable", False, e.message)
 
 	for doctype in ("Sales Invoice", "Customer", "Address", "Item"):
 		try:
 			client.get_list(doctype, [[cfg.key_field, "=", "__aitsgst_probe__"]], ["name"], 1)
-			check(f"Key field {cfg.key_field} on cloud {doctype}", True)
+			check(f"Key field {cfg.key_field} in the GST service {doctype}", True)
 		except CloudError as e:
-			check(f"Key field {cfg.key_field} on cloud {doctype}", False,
-			      f"Missing or not queryable - create custom field '{cfg.key_field}' (Data, unique for Sales Invoice) on the cloud. {e.message}")
+			check(f"Key field {cfg.key_field} in the GST service {doctype}", False,
+			      f"Missing or not queryable - create custom field '{cfg.key_field}' (Data, unique for Sales Invoice) in the GST service. {e.message}")
 
 	for (template_type, local), cloud_name in cfg.template_map.items():
 		try:
-			check(f"Cloud {template_type} '{cloud_name}'", client.get_doc(template_type, cloud_name) is not None)
+			check(f"GST service {template_type} '{cloud_name}'", client.get_doc(template_type, cloud_name) is not None)
 		except CloudError as e:
-			check(f"Cloud {template_type} '{cloud_name}'", False, e.message)
+			check(f"GST service {template_type} '{cloud_name}'", False, e.message)
 
 	return _checks_result(checks)
 
@@ -225,10 +225,10 @@ def _checks_result(checks):
 # ===================================================================== webhook
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=300, seconds=60)
-def cloud_webhook():
+def status_webhook():
 	"""Cloud Webhook (Sales Invoice, on update / on cancel) -> re-read that invoice from cloud.
 
-	The payload is never trusted: it only says WHICH cloud invoice to re-read, and is
+	The payload is never trusted: it only says WHICH GST service record to re-read, and is
 	accepted only with a valid X-Frappe-Webhook-Signature. Unknown invoices are ignored
 	without saying so.
 	"""

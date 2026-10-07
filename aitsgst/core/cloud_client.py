@@ -1,4 +1,4 @@
-"""REST client for the cloud ERPNext / Frappe v15 API.
+"""REST client for the GST service / Frappe v15 API.
 
 Ported from the SAP B1 Web Portal's ErpNextClient:
   * auth is "Authorization: token {api_key}:{api_secret}" on every request;
@@ -48,9 +48,9 @@ class CloudClient:
 	             session: requests.Session | None = None, sleep=time.sleep, read_retries: int = 2):
 		parsed = urlparse(base_url or "")
 		if parsed.scheme != "https" or not parsed.hostname or parsed.path.strip("/"):
-			raise CloudError("The cloud site URL must be an https site root, e.g. https://yoursite.m.erpnext.com")
+			raise CloudError("The GST service URL must be an https site root, e.g. https://yoursite.m.erpnext.com")
 		if not api_key or not api_secret:
-			raise CloudError("The cloud API key / secret are not configured.")
+			raise CloudError("The GST service API key / secret are not configured.")
 
 		self.base_url = base_url.rstrip("/")
 		self._auth = f"token {api_key}:{api_secret}"
@@ -71,7 +71,7 @@ class CloudClient:
 			try:
 				status, body = self._send("GET", path, params=params)
 				if status in _TRANSIENT_STATUS and attempt < self._read_retries:
-					raise CloudError(f"Cloud ERPNext is busy ({status}).", status, ambiguous=True)
+					raise CloudError(f"GST service is busy ({status}).", status, ambiguous=True)
 				break
 			except CloudError as e:
 				if not e.transient or attempt >= self._read_retries:
@@ -108,7 +108,7 @@ class CloudClient:
 		node = self.post(f"/api/resource/{quote(doctype, safe='')}", doc)
 		data = node.get("data")
 		if not data:
-			raise CloudError(f"Cloud ERPNext returned no document for the new {doctype}.")
+			raise CloudError(f"GST service returned no document for the new {doctype}.")
 		return data
 
 	def update(self, doctype: str, name: str, values: dict) -> dict:
@@ -133,22 +133,22 @@ class CloudClient:
 				method, url, params=params, json=json_body, headers=headers, timeout=self.timeout, allow_redirects=False
 			)
 		except requests.Timeout:
-			raise CloudError("Cloud ERPNext did not respond in time.", ambiguous=True)
+			raise CloudError("GST service did not respond in time.", ambiguous=True)
 		except requests.exceptions.SSLError:
-			raise CloudError("The cloud site's HTTPS certificate could not be verified. Check the Cloud Site URL.")
+			raise CloudError("The GST service's HTTPS certificate could not be verified. Check the GST Service URL.")
 		except requests.ConnectionError as e:
 			if _is_name_resolution_error(e):
 				# Nothing was sent, so this is not ambiguous.
-				raise CloudError(f"Host name '{urlparse(url).hostname}' was not found. Check the Cloud Site URL "
-				                 "(Frappe Cloud sites end in .frappe.cloud, without .com).")
+				raise CloudError(f"Host name '{urlparse(url).hostname}' was not found. Check the GST Service URL "
+				                 ".")
 			# The connection may have dropped after the request was sent, so this is ambiguous for writes.
-			raise CloudError("Could not reach the cloud ERPNext site. Check the URL and network access.", ambiguous=True)
+			raise CloudError("Could not reach the GST service. Check the URL and network access.", ambiguous=True)
 		except requests.RequestException as e:
-			raise CloudError(f"Request to cloud ERPNext failed ({type(e).__name__}).")
+			raise CloudError(f"Request to GST service failed ({type(e).__name__}).")
 
 		if 300 <= response.status_code < 400:
 			# Never follow redirects: one could downgrade to http or leak the token to another host.
-			raise CloudError(f"Cloud ERPNext redirected the request ({response.status_code}). Check the Cloud Site URL.",
+			raise CloudError(f"GST service redirected the request ({response.status_code}). Check the GST Service URL.",
 			                 response.status_code)
 		return response.status_code, response.text or ""
 
@@ -156,19 +156,19 @@ class CloudClient:
 		if 200 <= status < 300:
 			if not body.strip():
 				if require_body:
-					raise CloudError("Cloud ERPNext returned an empty response.", status)
+					raise CloudError("GST service returned an empty response.", status)
 				return None
 			try:
 				return json.loads(body)
 			except ValueError:
-				raise CloudError("Cloud ERPNext returned a response that is not valid JSON.", status)
+				raise CloudError("GST service returned a response that is not valid JSON.", status)
 
 		message = self._clean(extract_message(body))
 		if status == 401:
-			raise CloudError("Cloud ERPNext rejected the API key/secret (401). Check AITS GST Settings.", status)
+			raise CloudError("GST service rejected the API key/secret (401). Check AITS GST Settings.", status)
 		if status == 403:
-			raise CloudError(f"Cloud ERPNext denied permission for the API user (403). {message}", status)
-		raise CloudError(f"Cloud ERPNext error ({status}): {message}", status, ambiguous=status >= 500)
+			raise CloudError(f"GST service denied permission for the API user (403). {message}", status)
+		raise CloudError(f"GST service error ({status}): {message}", status, ambiguous=status >= 500)
 
 	def _clean(self, text: str) -> str:
 		return mask_text(text, *self._secrets)

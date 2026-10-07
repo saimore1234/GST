@@ -12,7 +12,7 @@ frappe.ui.form.on("AITS GST Settings", {
 				frappe.call({
 					method: "aitsgst.api.test_connection",
 					freeze: true,
-					freeze_message: __("Checking the cloud site..."),
+					freeze_message: __("Checking the GST service..."),
 				}).then((r) => show_checks(r.message));
 			});
 		}

@@ -45,24 +45,24 @@
   {
    "fieldname": "cloud_section",
    "fieldtype": "Section Break",
-   "label": "Cloud ERPNext Site"
+   "label": "GST Service"
   },
   {
    "description": "HTTPS site root only, e.g. https://yoursite.m.erpnext.com",
    "fieldname": "cloud_url",
    "fieldtype": "Data",
-   "label": "Cloud Site URL"
+   "label": "GST Service URL"
   },
   {
-   "description": "API key of a dedicated integration user on the cloud site.",
+   "description": "API key of the integration user on the GST service.",
    "fieldname": "api_key",
    "fieldtype": "Data",
-   "label": "Cloud API Key"
+   "label": "GST Service API Key"
   },
   {
    "fieldname": "api_secret",
    "fieldtype": "Password",
-   "label": "Cloud API Secret"
+   "label": "GST Service API Secret"
   },
   {
    "fieldname": "column_break_cloud",
@@ -76,14 +76,14 @@
   },
   {
    "default": "sap_b1_key",
-   "description": "Custom field on the cloud Sales Invoice / Customer / Address / Item that holds the duplicate-check key. sap_b1_key is the field the SAP B1 Web Portal already uses.",
+   "description": "Custom field on the GST service's Sales Invoice / Customer / Address / Item that holds the duplicate-check key (sap_b1_key is also used by the SAP B1 Web Portal).",
    "fieldname": "cloud_key_field",
    "fieldtype": "Data",
-   "label": "Cloud Key Field",
+   "label": "Key Field",
    "reqd": 1
   },
   {
-   "description": "Short code for this local site, used in cloud keys of invoices that did not come from SAP (\"{code}|SINV-0001\"). Never change it after the first push.",
+   "description": "Short code for this local site, used in the duplicate-check keys of invoices that did not come from SAP (\"{code}|SINV-0001\"). Never change it after the first invoice is prepared.",
    "fieldname": "local_site_code",
    "fieldtype": "Data",
    "label": "Local Site Code",
@@ -96,14 +96,14 @@
   },
   {
    "default": "0",
-   "description": "No call of any kind is made to the cloud site until this or 'Allow production' is checked. E-invoice / e-way bill actions additionally require the cloud's GST Settings to be in sandbox mode.",
+   "description": "No call of any kind is made to the GST service until this or 'Allow production' is checked. E-invoice / e-way bill actions additionally require the GST service to be in sandbox mode.",
    "fieldname": "sandbox_confirmed",
    "fieldtype": "Check",
-   "label": "I confirm the cloud site is a TEST / SANDBOX site"
+   "label": "I confirm the GST service is a TEST / SANDBOX setup"
   },
   {
    "default": "0",
-   "description": "Allows e-invoice / e-way bill actions against a cloud site whose GST Settings are NOT in sandbox mode, i.e. the live GST portal. Only check this after the sandbox test checklist has passed.",
+   "description": "Allows e-invoice / e-way bill actions when the GST service is NOT in sandbox mode, i.e. the live GST portal. Only check this after the sandbox test checklist has passed.",
    "fieldname": "allow_production",
    "fieldtype": "Check",
    "label": "Allow production (live GST portal)"
@@ -115,17 +115,17 @@
   },
   {
    "default": "0",
-   "description": "Queue a push to cloud (as a DRAFT) when a Sales Invoice of a mapped company is submitted. E-invoice / e-way bill are never generated automatically.",
+   "description": "Prepare the e-invoice record when a Sales Invoice of a mapped company is submitted. IRN / e-way bill are never generated automatically.",
    "fieldname": "auto_push_on_submit",
    "fieldtype": "Check",
-   "label": "Auto-push on submit"
+   "label": "Auto-prepare e-Invoice on submit"
   },
   {
    "default": "0",
-   "description": "Off (default): when an invoice is found cancelled on the cloud site, AITS GST Managers are notified and the invoice shows a 'Cancel here too' button. On: the local invoice is cancelled automatically by a background job (reverses its accounting entries).",
+   "description": "Off (default): when an invoice's e-invoice record is found cancelled in the GST service, AITS GST Managers are notified and the invoice shows a 'Cancel this invoice' button. On: the invoice is cancelled automatically by a background job (reverses its accounting entries).",
    "fieldname": "auto_cancel_local_on_cloud_cancel",
    "fieldtype": "Check",
-   "label": "Auto-cancel local invoice when cancelled on cloud"
+   "label": "Auto-cancel invoice when its e-invoice record is cancelled"
   },
   {
    "default": "15",
@@ -135,7 +135,7 @@
   },
   {
    "default": "7",
-   "description": "Pushed invoices whose cloud status is polled: posted within this many days.",
+   "description": "Invoices whose e-invoice status is checked: posted within this many days.",
    "fieldname": "sync_lookback_days",
    "fieldtype": "Int",
    "label": "Status Sync Look-back (days)"
@@ -146,13 +146,13 @@
   },
   {
    "default": "5",
-   "description": "Failed pushes (network errors, cloud 5xx) are retried with exponential backoff: 5, 10, 20, 40, 80 minutes.",
+   "description": "Failed preparations (network or service errors) are retried with backoff: 5, 10, 20, 40, 80 minutes.",
    "fieldname": "max_push_retries",
    "fieldtype": "Int",
-   "label": "Max Push Retries"
+   "label": "Max Retries"
   },
   {
-   "description": "Optional. Set the same secret on the cloud Webhook (Sales Invoice, on update) pointing to /api/method/aitsgst.api.cloud_webhook. The webhook only triggers a re-read from cloud; its payload is never trusted.",
+   "description": "Optional. Set the same secret on the GST service's Webhook (Sales Invoice, on update) pointing to /api/method/aitsgst.api.status_webhook. The webhook only triggers a status re-read; its payload is never trusted.",
    "fieldname": "webhook_secret",
    "fieldtype": "Password",
    "label": "Webhook Secret"
@@ -175,7 +175,7 @@
    "options": "AITS GST Company"
   },
   {
-   "description": "Only needed where a template's name differs between local and cloud; otherwise the local name is used as-is.",
+   "description": "Only needed where a template's name differs between this site and the GST service; otherwise the same name is used.",
    "fieldname": "template_map",
    "fieldtype": "Table",
    "label": "Tax Template Map",
@@ -185,7 +185,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-07 18:00:00.000000",
+ "modified": "2026-10-08 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "AITS GST",
  "name": "AITS GST Settings",

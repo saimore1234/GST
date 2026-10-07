@@ -3,7 +3,7 @@
 Order (from the SAP B1 Web Portal's ErpNextInvoiceService.Push), and why:
   1. Validate with build_push_plan - a blocked invoice sends nothing.
   2. Lock the invoice so two simultaneous pushes cannot both create one.
-  3. Look the invoice up on cloud by its key BEFORE creating - covers an earlier
+  3. Look the invoice up in the GST service by its key BEFORE creating - covers an earlier
      attempt that timed out after the cloud had already saved it, and invoices
      the SAP B1 Web Portal pushed directly with the same key.
   4. Find-or-create Customer, Addresses, Items (keyed), copy tax rows from the
@@ -58,7 +58,7 @@ class PushService:
 		si = self.store.get_invoice(name)
 		company_cfg = self.cfg.company(si.get("company"))
 
-		if si.get("aitsgst_cloud_invoice") and si.get("aitsgst_push_status") == "Pushed":
+		if si.get("aitsgst_cloud_invoice") and si.get("aitsgst_push_status") == "Ready":
 			return self._already_pushed(si)
 
 		key = invoice_key(si, company_cfg, self.cfg.site_code)
@@ -100,7 +100,7 @@ class PushService:
 	def _prepare(self, plan, company_cfg):
 		for uom in plan.uoms:
 			if self.client.get_doc("UOM", uom) is None:
-				raise PushProblem(f"Unit of measure '{uom}' does not exist on the cloud site. Create it there and push again.")
+				raise PushProblem(f"Unit of measure '{uom}' does not exist in the GST service. Create it there and push again.")
 		for code, description in plan.hsn_codes.items():
 			if self.client.get_doc("GST HSN Code", code) is None:
 				self.client.insert("GST HSN Code", {"hsn_code": code, "description": description})
@@ -127,7 +127,7 @@ class PushService:
 		if existing is None:
 			matches = self.client.get_list("Customer", [["customer_name", "=", c["name"]]], ["name", self.key_field], 2)
 			if len(matches) > 1:
-				raise PushProblem(f"More than one cloud Customer is named '{c['name']}'. Set the key field "
+				raise PushProblem(f"More than one GST service Customer is named '{c['name']}'. Set the key field "
 				                  f"({self.key_field}={c['key']}) on the right one and push again.")
 			existing = matches[0] if matches else None
 		if existing:
@@ -135,7 +135,7 @@ class PushService:
 			return existing["name"]
 
 		if not c["create_if_missing"]:
-			raise PushProblem(f"Customer '{c['name']}' does not exist on the cloud site and 'Create missing Customers' is off.")
+			raise PushProblem(f"Customer '{c['name']}' does not exist in the GST service and 'Create missing Customers' is off.")
 		doc = {
 			"customer_name": c["name"], "customer_type": c["customer_type"], "customer_group": c["customer_group"],
 			"territory": c["territory"], "gst_category": c["gst_category"], self.key_field: c["key"],
@@ -161,12 +161,12 @@ class PushService:
 			self._adopt("Item", existing, i["key"], f"Item '{i['cloud_code']}'")
 			return
 		if not i["create_if_missing"]:
-			raise PushProblem(f"Item '{i['cloud_code']}' does not exist on the cloud site and 'Create missing Items' is off.")
+			raise PushProblem(f"Item '{i['cloud_code']}' does not exist in the GST service and 'Create missing Items' is off.")
 
 		stock_settings = self.client.get_doc("Stock Settings", "Stock Settings") or {}
 		valuation_method = stock_settings.get("valuation_method")
 		if not valuation_method:
-			raise PushProblem("Cloud Stock Settings has no default Valuation Method, which new Items require. Set one there and push again.")
+			raise PushProblem("GST service Stock Settings has no default Valuation Method, which new Items require. Set one there and push again.")
 		doc = {
 			"item_code": i["cloud_code"], "item_name": i["item_name"], "description": i["description"],
 			"item_group": i["item_group"], "stock_uom": i["stock_uom"], "is_stock_item": i["is_stock_item"],
@@ -184,7 +184,7 @@ class PushService:
 		if not current:
 			self.client.update(doctype, existing["name"], {self.key_field: key})
 		elif current != key:
-			raise PushProblem(f"{label} already exists on the cloud site but is linked to a different record ({current}).")
+			raise PushProblem(f"{label} already exists in the GST service but is linked to a different record ({current}).")
 
 	def _company_address(self, gstin: str | None) -> str | None:
 		if not gstin:
@@ -201,7 +201,7 @@ class PushService:
 				master_doctype=TAX_TEMPLATE, master_name=plan.cloud_tax_template,
 			) or []
 			if not rows:
-				raise PushProblem(f"Tax template '{plan.cloud_tax_template}' was not found on the cloud site, or has no tax rows. "
+				raise PushProblem(f"Tax template '{plan.cloud_tax_template}' was not found in the GST service, or has no tax rows. "
 				                  "Add it to the Tax Template Map in AITS GST Settings.")
 			plan.payload["taxes"] = rows
 
@@ -213,7 +213,7 @@ class PushService:
 			if template not in rate_cache:
 				doc = self.client.get_doc(ITEM_TAX_TEMPLATE, template)
 				if doc is None:
-					raise PushProblem(f"Item Tax Template '{template}' was not found on the cloud site. Map it in AITS GST Settings.")
+					raise PushProblem(f"Item Tax Template '{template}' was not found in the GST service. Map it in AITS GST Settings.")
 				rate_cache[template] = json.dumps({t["tax_type"]: t.get("tax_rate") for t in doc.get("taxes") or [] if t.get("tax_type")})
 			line["item_tax_rate"] = rate_cache[template]
 
@@ -233,8 +233,8 @@ class PushService:
 		cloud_name = si["aitsgst_cloud_invoice"]
 		doc = self.client.get_doc(SI, cloud_name)
 		if doc is None:
-			msg = (f"Cloud invoice {cloud_name} no longer exists on the cloud site. Nothing was created. "
-			       "Check the cloud site; the link is kept so no duplicate is created by accident.")
+			msg = ("The e-invoice record of this invoice no longer exists in the GST service. Nothing was created. "
+			       "Ask your administrator to check; the link is kept so no duplicate is created by accident.")
 			self.store.update_invoice(si["name"], {"aitsgst_last_error": msg})
 			self.log.write("Push", "Blocked", si["name"], msg, company=si.get("company"), cloud_invoice=cloud_name)
 			return {"outcome": "Blocked", "problems": [msg]}
@@ -242,14 +242,14 @@ class PushService:
 			"aitsgst_cloud_docstatus": docstatus_text(doc.get("docstatus")),
 			"aitsgst_last_synced": self.store.now(),
 		})
-		return {"outcome": "AlreadyPushed", "cloud_invoice": cloud_name}
+		return {"outcome": "AlreadyReady", "cloud_invoice": cloud_name}
 
 	def _record(self, si, key, cloud_name, outcome, payload, cloud_doc=None) -> dict:
 		if not cloud_doc or "grand_total" not in cloud_doc:
 			cloud_doc = self.client.get_doc(SI, cloud_name) or {}
 		status, detail, cloud_total = reconcile(si, cloud_doc)
 		self.store.update_invoice(si["name"], {
-			"aitsgst_push_status": "Pushed",
+			"aitsgst_push_status": "Ready",
 			"aitsgst_cloud_invoice": cloud_name,
 			"aitsgst_cloud_key": key,
 			"aitsgst_cloud_docstatus": docstatus_text(cloud_doc.get("docstatus")),
@@ -258,7 +258,7 @@ class PushService:
 			"aitsgst_recon_detail": detail,
 			"aitsgst_last_error": None,
 			"aitsgst_last_synced": self.store.now(),
-		}, comment=f"Pushed to cloud as draft {cloud_name} ({outcome.lower()}); reconciliation {status}.")
+		}, comment=f"Prepared for e-invoicing; totals check: {status}.")
 		self.log.write("Push", "Success", si["name"], f"{outcome} {cloud_name}; reconciliation {status}. {detail}",
 		               company=si.get("company"), cloud_invoice=cloud_name, request=payload,
 		               response={"name": cloud_name, "docstatus": cloud_doc.get("docstatus"), "grand_total": cloud_doc.get("grand_total")})

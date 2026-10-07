@@ -114,8 +114,8 @@ class TestReconcile(unittest.TestCase):
 		status, detail, _ = reconcile(s.invoice(), cloud)
 		self.assertEqual(status, "Mismatch")
 		self.assertIn("Total", detail)
-		self.assertIn("IGST: local 180.00 vs cloud 0.00", detail)
-		self.assertIn("CGST: local 0.00 vs cloud 90.00", detail)
+		self.assertIn("IGST: invoice 180.00 vs GST service 0.00", detail)
+		self.assertIn("CGST: invoice 0.00 vs GST service 90.00", detail)
 
 	def test_rounded_totals_accepted(self):
 		local = s.invoice(grand_total=1179.6, rounded_total=1180)

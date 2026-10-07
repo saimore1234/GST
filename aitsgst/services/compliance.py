@@ -1,13 +1,16 @@
 """E-invoice (IRN) and e-way bill through the CLOUD site's India Compliance; results are
 written back to the local Sales Invoice.
 
+User-visible text calls the cloud ERPNext site "the GST service" and its copy of the invoice
+"the GST service record": end users are not shown that a second ERPNext site is involved.
+
 Ported from the SAP B1 Web Portal's ErpNextComplianceService. Two facts shape every step:
   * It is NOT reversible. An IRN / e-way bill can only be cancelled within 24 hours, and
-    generation needs a SUBMITTED cloud invoice (submitting posts GL entries on cloud). So every
+    generation needs a SUBMITTED GST service record (submitting posts GL entries in the GST service). So every
     check that can be made up front IS made up front, and nothing is submitted or sent unless
     all pass AND the user confirmed.
   * A timeout is ambiguous - the GST portal may have registered the document before the
-    connection dropped. After any failure the cloud invoice is re-read; if the IRN / e-way
+    connection dropped. After any failure the GST service record is re-read; if the IRN / e-way
     bill is there it is recorded instead of reported as a failure.
 
 Extra guards added for the local -> cloud setup:
@@ -103,7 +106,7 @@ class ComplianceService:
 
 		if doc.get("irn") and not _is_cancelled_einvoice(doc):
 			self.sync_from_doc(si, doc)
-			self.log.write("E-Invoice", "Success", name, f"Already generated on cloud for {cloud_name}.", cloud_invoice=cloud_name)
+			self.log.write("E-Invoice", "Success", name, f"Already generated for {cloud_name}.", cloud_invoice=cloud_name)
 			return {"outcome": "AlreadyGenerated", "irn": doc.get("irn")}
 
 		settings = self._gst_settings()
@@ -123,14 +126,14 @@ class ComplianceService:
 			except CloudError as e:
 				after = self._try_read(cloud_name)
 				if after and after.get("irn") and not _is_cancelled_einvoice(after):
-					return self._record_einvoice(si, cloud_name, "Generated", note="(the call reported an error, but the IRN exists on cloud)")
+					return self._record_einvoice(si, cloud_name, "Generated", note="(the call reported an error, but the IRN exists in the GST service)")
 				self._mark_failed(name, "aitsgst_einvoice_status", "E-Invoice", cloud_name, e.message, after)
 				raise
 
 	def _einvoice_problems(self, si, doc, settings) -> list:
 		problems = []
 		if doc.get("docstatus") == 2:
-			problems.append("This invoice is cancelled on the cloud site.")
+			problems.append("This invoice is cancelled in the GST service.")
 		if _is_cancelled_einvoice(doc):
 			problems.append("The IRN for this invoice was cancelled. A cancelled IRN can never be generated again for the "
 			                "same invoice number: cancel the invoice and issue a new one.")
@@ -139,21 +142,21 @@ class ComplianceService:
 
 		company_cfg = self.cfg.company(si.get("company")) or {}
 		if (doc.get("company_gstin") or "").upper() != (company_cfg.get("company_gstin") or "").upper():
-			problems.append(f"The cloud invoice's company GSTIN ({doc.get('company_gstin') or 'blank'}) does not match the "
+			problems.append(f"The GST service record's company GSTIN ({doc.get('company_gstin') or 'blank'}) does not match the "
 			                f"GSTIN mapped for this company ({company_cfg.get('company_gstin') or 'not mapped'}).")
 		if si.get("aitsgst_recon_status") == "Mismatch":
-			problems.append("The cloud invoice totals do not match the local invoice (see Reconciliation Detail). "
-			                "Fix the templates and re-push before registering it with the GST portal.")
+			problems.append("The GST service record's totals do not match this invoice. "
+			                "Ask your administrator to check the tax templates before registering it with the GST portal.")
 
 		if settings is not None:
 			if not settings.get("enable_e_invoice"):
-				problems.append("E-Invoice is not enabled in the cloud site's GST Settings.")
+				problems.append("E-Invoice is not enabled in the GST service's settings.")
 			if not self._has_credentials(settings, company_cfg.get("company_gstin"), "e-Invoice"):
-				problems.append(f"Cloud GST Settings has no e-Invoice API credentials for GSTIN {company_cfg.get('company_gstin')}.")
+				problems.append(f"GST service settings has no e-Invoice API credentials for GSTIN {company_cfg.get('company_gstin')}.")
 			posting = _parse_dt(doc.get("posting_date"))
 			applicable_from = _parse_dt(settings.get("e_invoice_applicable_from"))
 			if posting and applicable_from and posting.date() < applicable_from.date():
-				problems.append(f"E-invoicing is applicable on cloud from {applicable_from:%d %b %Y}; this invoice is dated {posting:%d %b %Y}.")
+				problems.append(f"E-invoicing is applicable in the GST service from {applicable_from:%d %b %Y}; this invoice is dated {posting:%d %b %Y}.")
 			limit = settings.get("e_invoice_reporting_time_limit_days") or 0
 			if posting and limit and (self.store.now().date() - posting.date()).days > int(limit):
 				problems.append(f"This invoice is more than {limit} days old, beyond the e-invoice reporting time limit.")
@@ -163,9 +166,9 @@ class ComplianceService:
 		doc = self._read(cloud_name)
 		irn = doc.get("irn")
 		if not irn:
-			raise CloudError("The cloud site finished without returning an IRN. Check the invoice there before trying again.")
+			raise CloudError("The GST service finished without returning an IRN. Check the invoice there before trying again.")
 		values = self._doc_values(doc)
-		self.store.update_invoice(si["name"], values, comment=f"e-Invoice generated on cloud. IRN {irn} {note}".strip())
+		self.store.update_invoice(si["name"], values, comment=f"e-Invoice generated. IRN {irn} {note}".strip())
 		self.log.write("E-Invoice", "Success", si["name"], f"IRN generated for {cloud_name}. {note}".strip(),
 		               cloud_invoice=cloud_name, response={"irn": irn, "ack_no": values.get("aitsgst_ack_no")})
 		return {"outcome": status, "irn": irn, "ack_no": values.get("aitsgst_ack_no")}
@@ -177,7 +180,7 @@ class ComplianceService:
 
 		if _is_active_ewb(doc):
 			self.sync_from_doc(si, doc)
-			self.log.write("E-Way Bill", "Success", name, f"Already generated on cloud for {cloud_name}.", cloud_invoice=cloud_name)
+			self.log.write("E-Way Bill", "Success", name, f"Already generated for {cloud_name}.", cloud_invoice=cloud_name)
 			return {"outcome": "AlreadyGenerated", "ewaybill": doc.get("ewaybill")}
 
 		settings = self._gst_settings()
@@ -189,7 +192,7 @@ class ComplianceService:
 		if not confirm:
 			raise ConfirmationRequired("Confirmation is required to generate an e-way bill.",
 			                           "Generating an e-way bill registers it with the GST portal (cancellable only within 24 hours)"
-			                           + (" and submits the draft invoice on cloud." if doc.get("docstatus") == 0 else "."))
+			                           + (" and submits the draft invoice in the GST service." if doc.get("docstatus") == 0 else "."))
 
 		with self.store.lock(name, "e-waybill"):
 			try:
@@ -199,22 +202,22 @@ class ComplianceService:
 			except CloudError as e:
 				after = self._try_read(cloud_name)
 				if after and _is_active_ewb(after):
-					return self._record_ewaybill(si, cloud_name, note="(the call reported an error, but the e-way bill exists on cloud)")
+					return self._record_ewaybill(si, cloud_name, note="(the call reported an error, but the e-way bill exists in the GST service)")
 				self._mark_failed(name, "aitsgst_ewb_status", "E-Way Bill", cloud_name, e.message, after)
 				raise
 
 	def _ewaybill_problems(self, si, doc, settings, r: dict):
 		problems, clean = [], {}
 		if doc.get("docstatus") == 2:
-			problems.append("This invoice is cancelled on the cloud site.")
+			problems.append("This invoice is cancelled in the GST service.")
 		company_cfg = self.cfg.company(si.get("company")) or {}
 		if settings is not None:
 			if not settings.get("enable_e_waybill"):
-				problems.append("E-Waybill is not enabled in the cloud site's GST Settings.")
+				problems.append("E-Waybill is not enabled in the GST service's settings.")
 			if not self._has_credentials(settings, company_cfg.get("company_gstin"), "e-Waybill") and not (
 				doc.get("irn") and self._has_credentials(settings, company_cfg.get("company_gstin"), "e-Invoice")
 			):
-				problems.append(f"Cloud GST Settings has no e-Waybill API credentials for GSTIN {company_cfg.get('company_gstin')}.")
+				problems.append(f"GST service settings has no e-Waybill API credentials for GSTIN {company_cfg.get('company_gstin')}.")
 		problems += self._transport_problems(r, clean, require_vehicle_for_road=True)
 		return problems, clean
 
@@ -266,24 +269,24 @@ class ComplianceService:
 		doc = self._read(cloud_name)
 		ewb = doc.get("ewaybill")
 		if not ewb:
-			raise CloudError("The cloud site finished without returning an e-way bill number. Check the invoice there before trying again.")
+			raise CloudError("The GST service finished without returning an e-way bill number. Check the invoice there before trying again.")
 		self._wait_for_ewaybill_log(ewb)
 		values = self._doc_values(doc)
-		self.store.update_invoice(si["name"], values, comment=f"e-Way Bill {ewb} generated on cloud. {note}".strip())
+		self.store.update_invoice(si["name"], values, comment=f"e-Way Bill {ewb} generated. {note}".strip())
 		self.log.write("E-Way Bill", "Success", si["name"], f"E-way bill {ewb} generated for {cloud_name}. {note}".strip(),
 		               cloud_invoice=cloud_name, response={"ewaybill": ewb, "valid_upto": str(values.get("aitsgst_ewb_valid_upto"))})
 		return {"outcome": "Generated", "ewaybill": ewb, "valid_upto": str(values.get("aitsgst_ewb_valid_upto") or "")}
 
 	# ======================================================= update vehicle
 	def update_vehicle(self, name: str, values: dict, confirm: bool = False) -> dict:
-		"""Part-B update. Allowed only while the e-way bill is active on cloud."""
+		"""Part-B update. Allowed only while the e-way bill is active in the GST service."""
 		si, cloud_name = self._require_pushed(name)
 		doc = self._read(cloud_name)
 		r = values or {}
 
 		problems, clean = [], {}
 		if not _is_active_ewb(doc):
-			problems.append("This invoice has no active e-way bill on the cloud site.")
+			problems.append("This invoice has no active e-way bill in the GST service.")
 		problems += self._transport_problems(r, clean, require_vehicle_for_road=False)
 		if clean.get("mode_of_transport") == "Road" and not clean.get("vehicle_no"):
 			problems.append("Enter the new vehicle number.")
@@ -312,13 +315,13 @@ class ComplianceService:
 			try:
 				self.client.call(f"{EWB}.update_vehicle_info", doctype=SI, docname=cloud_name, values=clean)
 			except CloudError as e:
-				self.log.write("Update Vehicle", "Failed", name, e.message + " Use Refresh to check the cloud state.",
+				self.log.write("Update Vehicle", "Failed", name, e.message + " Use Refresh e-Invoice Status to check.",
 				               cloud_invoice=cloud_name, request=clean)
 				raise
 			doc = self._read(cloud_name)
 			self._sleep(self.EWB_LOG_WAITS[0])  # the new validity is written to the log in the background too
 			values_ = self._doc_values(doc)
-			self.store.update_invoice(name, values_, comment=f"e-Way Bill vehicle updated on cloud: {clean.get('vehicle_no') or clean.get('lr_no')} ({reason}).")
+			self.store.update_invoice(name, values_, comment=f"e-Way Bill vehicle updated: {clean.get('vehicle_no') or clean.get('lr_no')} ({reason}).")
 			self.log.write("Update Vehicle", "Success", name, f"Part-B updated ({reason}).", cloud_invoice=cloud_name, request=clean)
 			return {"outcome": "Updated", "vehicle_no": values_.get("aitsgst_vehicle_no"), "valid_upto": str(values_.get("aitsgst_ewb_valid_upto") or "")}
 
@@ -406,7 +409,7 @@ class ComplianceService:
 		values = self._doc_values(doc)
 		if what == "einvoice":
 			if doc.get("irn") and not _is_cancelled_einvoice(doc):
-				raise CloudError("The cloud site finished without cancelling the IRN. Check the invoice there before trying again.")
+				raise CloudError("The GST service finished without cancelling the IRN. Check the invoice there before trying again.")
 			values.update({"aitsgst_einvoice_status": "Cancelled", "aitsgst_einvoice_cancel_reason": text,
 			               "aitsgst_einvoice_cancelled_on": now, "aitsgst_einvoice_cancelled_by": user})
 			if had_ewb and not _is_active_ewb(doc):
@@ -415,17 +418,17 @@ class ComplianceService:
 			action, label = "E-Invoice Cancel", "e-Invoice (IRN)"
 		else:
 			if _is_active_ewb(doc):
-				raise CloudError("The cloud site finished without cancelling the e-way bill. Check the invoice there before trying again.")
+				raise CloudError("The GST service finished without cancelling the e-way bill. Check the invoice there before trying again.")
 			values.update({"aitsgst_ewb_status": "Cancelled", "aitsgst_ewb_cancel_reason": text,
 			               "aitsgst_ewb_cancelled_on": now, "aitsgst_ewb_cancelled_by": user})
 			action, label = "E-Way Bill Cancel", "e-Way Bill"
-		self.store.update_invoice(si["name"], values, comment=f"{label} cancelled on cloud ({text}). The local invoice itself was not cancelled.")
+		self.store.update_invoice(si["name"], values, comment=f"{label} cancelled in the GST service ({text}). The local invoice itself was not cancelled.")
 		self.log.write(action, "Success", si["name"], f"{label} cancelled for {cloud_name} ({text}).", cloud_invoice=cloud_name)
 		return {"outcome": "Cancelled"}
 
 	# ===================================================== cancel everywhere
 	def cancel_everywhere(self, name: str, reason: str | None = None, remark: str | None = None, confirm: bool = False) -> dict:
-		"""Cancel e-way bill + IRN on the GST portal, the cloud invoice (a cloud draft is deleted), then
+		"""Cancel e-way bill + IRN on the GST portal, the GST service record (a draft GST service record is deleted), then
 		the local invoice - in that order, after checking up front that every step can succeed.
 
 		Each step is skipped when already done, so after a part-way failure it can simply be run again.
@@ -434,7 +437,7 @@ class ComplianceService:
 		if si.get("docstatus") != 1:
 			raise Blocked("Only a submitted invoice can be cancelled.", f"{name} is not submitted.")
 		cloud_name = si.get("aitsgst_cloud_invoice")
-		doc = self.client.get_doc(SI, cloud_name) if cloud_name else None  # None = not on cloud (never pushed or deleted there)
+		doc = self.client.get_doc(SI, cloud_name) if cloud_name else None  # None = not in the GST service (never pushed or deleted there)
 
 		irn_active = bool(doc and doc.get("irn") and not _is_cancelled_einvoice(doc))
 		ewb_active = bool(doc and _is_active_ewb(doc))
@@ -449,7 +452,7 @@ class ComplianceService:
 		problems += self.store.local_cancel_problems(name)
 		if problems:
 			self._log_blocked("Cancel Everywhere", name, cloud_name, problems)
-			raise Blocked("Nothing was cancelled - on the GST portal, on cloud or here.", problems)
+			raise Blocked("Nothing was cancelled - on the GST portal, in the GST service or here.", problems)
 
 		plan = self._cancel_plan(name, cloud_name, doc, irn_active, ewb_active)
 		if not confirm:
@@ -469,17 +472,17 @@ class ComplianceService:
 
 				if doc and doc.get("docstatus") == 1:
 					self._call_then_check("frappe.client.cancel", cloud_name, lambda d: d and d.get("docstatus") == 2)
-					done.append(f"Cloud invoice {cloud_name} cancelled")
+					done.append("e-Invoice record closed")
 				elif doc and doc.get("docstatus") == 0:
 					self._call_then_check("frappe.client.delete", cloud_name, lambda d: d is None)
-					done.append(f"Cloud draft {cloud_name} deleted")
+					done.append("e-Invoice record closed")
 			except CloudError as e:
 				self._record_cloud_cancel_state(si, cloud_name, reason, remark)
 				self.log.write("Cancel Everywhere", "Failed", name, "Done: " + ("; ".join(done) or "nothing") + f". Failed: {e.message}",
 				               cloud_invoice=cloud_name)
-				raise Blocked("Cancel Everywhere stopped part-way. The local invoice was NOT cancelled.",
+				raise Blocked("Cancelling stopped part-way. This invoice was NOT cancelled.",
 				              [*(f"Done: {d}" for d in done), f"Failed: {e.message}",
-				               "Fix the problem and run Cancel Everywhere again - finished steps are skipped."])
+				               "Fix the problem and run Cancel Invoice (with IRN / e-Way Bill) again - finished steps are skipped."])
 
 			self._record_cloud_cancel_state(si, cloud_name, reason, remark)
 			try:
@@ -487,10 +490,10 @@ class ComplianceService:
 			except Exception as e:  # e.g. a document was linked meanwhile
 				message = str(e) or type(e).__name__
 				self.log.write("Cancel Everywhere", "Failed", name, "; ".join(done) + f". Local cancel failed: {message}", cloud_invoice=cloud_name)
-				raise Blocked("Cancelled on cloud, but the local invoice could not be cancelled.",
-				              [*(f"Done: {d}" for d in done), f"Local cancel failed: {message}",
+				raise Blocked("The IRN / e-invoice record was cancelled, but this invoice could not be cancelled.",
+				              [*(f"Done: {d}" for d in done), f"Invoice cancel failed: {message}",
 				               "Fix that, then cancel this invoice with the normal Cancel button."])
-		done.append(f"Local invoice {name} cancelled")
+		done.append(f"Invoice {name} cancelled")
 		self.log.write("Cancel Everywhere", "Success", name, "; ".join(done), cloud_invoice=cloud_name)
 		return {"outcome": "Cancelled", "steps": done}
 
@@ -500,11 +503,9 @@ class ComplianceService:
 			plan.append("cancel the IRN" + (" and e-way bill" if ewb_active else "") + " on the GST portal")
 		elif ewb_active:
 			plan.append("cancel the e-way bill on the GST portal")
-		if doc and doc.get("docstatus") == 1:
-			plan.append(f"cancel cloud invoice {cloud_name}")
-		elif doc and doc.get("docstatus") == 0:
-			plan.append(f"delete cloud draft {cloud_name}")
-		plan.append(f"cancel local invoice {name}")
+		if doc and doc.get("docstatus") in (0, 1):
+			plan.append("close the e-invoice record")
+		plan.append(f"cancel invoice {name}")
 		return plan
 
 	def _window_problems(self, doc, irn_active, ewb_active) -> list:
@@ -525,11 +526,11 @@ class ComplianceService:
 		try:
 			result = self.client.call("frappe.desk.form.linked_with.get_submitted_linked_docs", doctype=SI, name=cloud_name) or {}
 		except CloudError as e:
-			return [f"Could not check documents linked to {cloud_name} on cloud ({e.message}). Nothing was cancelled."]
+			return [f"Could not check documents linked to {cloud_name} in the GST service ({e.message}). Nothing was cancelled."]
 		docs = [d for d in result.get("docs") or [] if d.get("doctype") not in IGNORED_LINKED_DOCTYPES]
 		if docs:
 			listed = ", ".join(f"{d.get('doctype')} {d.get('name')}" for d in docs[:5])
-			return [f"On the cloud site, {cloud_name} has submitted documents linked to it ({listed}). Cancel those on cloud first."]
+			return [f"In the GST service, {cloud_name} has submitted documents linked to it ({listed}). Cancel those in the GST service first."]
 		return []
 
 	def _cancel_portal(self, method, args, cloud_name, reason, remark, done_when):
@@ -570,28 +571,28 @@ class ComplianceService:
 		si, cloud_name = self._require_pushed(name)
 		doc = self._read(cloud_name)
 		changed = self.sync_from_doc(si, doc)
-		self.log.write("Refresh", "Success", name, "Updated from cloud." if changed else "No change on cloud.", cloud_invoice=cloud_name)
+		self.log.write("Refresh", "Success", name, "Updated from the GST service." if changed else "No change in the GST service.", cloud_invoice=cloud_name)
 		return {"outcome": "Refreshed", "changed": changed}
 
 	def sync_from_doc(self, si: dict, doc: dict) -> bool:
 		"""Writes the cloud state onto the local invoice; returns True if anything changed."""
 		values = self._doc_values(doc)
-		# Cancellations made directly on the cloud site: take reason/date from the cloud logs.
+		# Cancellations made directly in the GST service: take reason/date from the cloud logs.
 		if values.get("aitsgst_einvoice_status") == "Cancelled" and si.get("aitsgst_einvoice_status") != "Cancelled":
 			log = self._einvoice_log(doc.get("irn")) if doc.get("irn") else {}
-			values.setdefault("aitsgst_einvoice_cancel_reason", log.get("cancel_reason_code") or "Cancelled on cloud")
+			values.setdefault("aitsgst_einvoice_cancel_reason", log.get("cancel_reason_code") or "Cancelled in the GST service")
 			values.setdefault("aitsgst_einvoice_cancelled_on", _parse_dt(log.get("cancelled_on")) or self.store.now())
-			values.setdefault("aitsgst_einvoice_cancelled_by", "cloud")
+			values.setdefault("aitsgst_einvoice_cancelled_by", "GST service")
 		if values.get("aitsgst_ewb_status") == "Cancelled" and si.get("aitsgst_ewb_status") != "Cancelled":
-			values.setdefault("aitsgst_ewb_cancel_reason", "Cancelled on cloud")
+			values.setdefault("aitsgst_ewb_cancel_reason", "Cancelled in the GST service")
 			values.setdefault("aitsgst_ewb_cancelled_on", self.store.now())
-			values.setdefault("aitsgst_ewb_cancelled_by", "cloud")
+			values.setdefault("aitsgst_ewb_cancelled_by", "GST service")
 
 		cancelled_on_cloud = (values.get("aitsgst_cloud_docstatus") == "Cancelled" and si.get("aitsgst_cloud_docstatus") != "Cancelled"
 		                      and si.get("docstatus") == 1)
 		changed = {k: v for k, v in values.items() if k != "aitsgst_last_synced" and _differs(si.get(k), v)}
 		self.store.update_invoice(si["name"], values, comment=(
-			"Cloud GST status changed: " + ", ".join(f"{k.replace('aitsgst_', '')}={v}" for k, v in changed.items()
+			"e-Invoice status changed: " + ", ".join(f"{k.replace('aitsgst_', '')}={v}" for k, v in changed.items()
 			                                         if k in ("aitsgst_einvoice_status", "aitsgst_ewb_status", "aitsgst_cloud_docstatus", "aitsgst_vehicle_no"))
 		) if changed and any(k in changed for k in ("aitsgst_einvoice_status", "aitsgst_ewb_status", "aitsgst_cloud_docstatus", "aitsgst_vehicle_no")) else None)
 		if cancelled_on_cloud:
@@ -599,7 +600,7 @@ class ComplianceService:
 		return bool(changed)
 
 	def _doc_values(self, doc: dict) -> dict:
-		"""Local field values for a cloud invoice (plus its e-Invoice / e-Waybill logs)."""
+		"""Local field values for a GST service record (plus its e-Invoice / e-Waybill logs)."""
 		values = {"aitsgst_cloud_docstatus": docstatus_text(doc.get("docstatus")), "aitsgst_last_synced": self.store.now()}
 
 		irn = doc.get("irn")
@@ -634,8 +635,8 @@ class ComplianceService:
 	def _require_pushed(self, name):
 		si = self.store.get_invoice(name)
 		cloud_name = si.get("aitsgst_cloud_invoice")
-		if not cloud_name or si.get("aitsgst_push_status") != "Pushed":
-			raise Blocked("This invoice has not been pushed to cloud yet.", "Push it to cloud first, then generate the e-invoice or e-way bill.")
+		if not cloud_name or si.get("aitsgst_push_status") != "Ready":
+			raise Blocked("This invoice has not been prepared for e-invoicing yet.", "Use Prepare e-Invoice first, then generate the e-invoice or e-way bill.")
 		if not self.cfg.company(si.get("company")):
 			raise Blocked("This company is not mapped in AITS GST Settings.", f"Map company {si.get('company')} first.")
 		return si, cloud_name
@@ -643,7 +644,7 @@ class ComplianceService:
 	def _read(self, cloud_name) -> dict:
 		doc = self.client.get_doc(SI, cloud_name)
 		if doc is None:
-			raise Blocked(f"Sales Invoice {cloud_name} was not found on the cloud site.", "It may have been deleted or renamed there.")
+			raise Blocked(f"Sales Invoice {cloud_name} was not found in the GST service.", "It may have been deleted or renamed there.")
 		return doc
 
 	def _try_read(self, cloud_name):
@@ -661,12 +662,12 @@ class ComplianceService:
 
 	def _environment_problems(self, settings) -> list:
 		if settings is None:
-			return ["The cloud site's GST Settings could not be read (check the API user's permissions)."]
+			return ["The GST service's settings could not be read (check the API user's permissions)."]
 		problems = []
 		if not settings.get("enable_api"):
-			problems.append("The India Compliance API is not enabled in the cloud site's GST Settings.")
+			problems.append("The India Compliance API is not enabled in the GST service's settings.")
 		if not settings.get("sandbox_mode") and not self.cfg.allow_production:
-			problems.append("The cloud site's GST Settings are in PRODUCTION mode (live GST portal), and 'Allow production' "
+			problems.append("The GST service's settings are in PRODUCTION mode (live GST portal), and 'Allow production' "
 			                "is off in AITS GST Settings. Nothing was sent.")
 		return problems
 

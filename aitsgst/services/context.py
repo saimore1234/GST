@@ -65,7 +65,7 @@ def build_client(cfg: Config) -> CloudClient:
 		frappe.throw(_("AITS GST is disabled. Enable it in AITS GST Settings."), GateClosed)
 	if not cfg.gate_open:
 		frappe.throw(
-			_("No calls are made to the cloud site until 'I confirm the cloud site is a TEST / SANDBOX site' "
+			_("No calls are made to the GST service until 'I confirm the GST service is a TEST / SANDBOX setup' "
 			  "(or 'Allow production') is checked in AITS GST Settings."),
 			GateClosed,
 		)
@@ -97,6 +97,13 @@ class LocalStore:
 		return frappe.db.get_value("Sales Invoice", local_name, "aitsgst_cloud_invoice")
 
 	def update_invoice(self, name: str, values: dict, comment: str | None = None):
+		qr = values.get("aitsgst_signed_qr_code")
+		if qr:
+			current = frappe.db.get_value("Sales Invoice", name, ["aitsgst_signed_qr_code", "aitsgst_qr_image"], as_dict=True) or {}
+			if qr != current.get("aitsgst_signed_qr_code") or not current.get("aitsgst_qr_image"):
+				from aitsgst.utils.qr import save_qr_image
+
+				values = {**values, "aitsgst_qr_image": save_qr_image(name, qr)}
 		frappe.db.set_value("Sales Invoice", name, values, update_modified=False)
 		if comment:
 			frappe.get_doc("Sales Invoice", name).add_comment("Info", comment)
@@ -112,7 +119,7 @@ class LocalStore:
 			frappe.throw(_("Another {0} of {1} is already running. Wait a moment and refresh.").format(action, name))
 
 	def local_cancel_problems(self, name: str) -> list:
-		"""What would stop the local cancel - checked BEFORE anything is cancelled on cloud."""
+		"""What would stop the local cancel - checked BEFORE anything is cancelled in the GST service."""
 		from frappe.desk.form.linked_with import get_submitted_linked_docs
 
 		from aitsgst.services.compliance import IGNORED_LINKED_DOCTYPES
@@ -138,7 +145,7 @@ class LocalStore:
 			frappe.enqueue("aitsgst.tasks.cancel_local_after_cloud", queue="short", enqueue_after_commit=True,
 			               job_id=f"aitsgst-cancel-{name}", deduplicate=True, name=name)
 		else:
-			notify_managers(name, _("Sales Invoice {0} was cancelled on the cloud site. Cancel it here too.").format(name))
+			notify_managers(name, _("Sales Invoice {0} was cancelled in the GST service. Cancel it here too.").format(name))
 
 	def user(self) -> str:
 		return frappe.session.user
