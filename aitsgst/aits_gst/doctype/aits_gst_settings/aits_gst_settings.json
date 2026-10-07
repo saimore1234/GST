@@ -1,0 +1,213 @@
+{
+ "actions": [],
+ "creation": "2026-10-07 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "local_ic_warning",
+  "cloud_section",
+  "cloud_url",
+  "api_key",
+  "api_secret",
+  "column_break_cloud",
+  "request_timeout",
+  "cloud_key_field",
+  "local_site_code",
+  "safety_section",
+  "sandbox_confirmed",
+  "allow_production",
+  "automation_section",
+  "auto_push_on_submit",
+  "auto_cancel_local_on_cloud_cancel",
+  "sync_interval_minutes",
+  "sync_lookback_days",
+  "column_break_automation",
+  "max_push_retries",
+  "webhook_secret",
+  "last_status_poll",
+  "companies_section",
+  "companies",
+  "template_map"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "local_ic_warning",
+   "fieldtype": "HTML",
+   "label": "Local India Compliance check"
+  },
+  {
+   "fieldname": "cloud_section",
+   "fieldtype": "Section Break",
+   "label": "Cloud ERPNext Site"
+  },
+  {
+   "description": "HTTPS site root only, e.g. https://yoursite.m.erpnext.com",
+   "fieldname": "cloud_url",
+   "fieldtype": "Data",
+   "label": "Cloud Site URL"
+  },
+  {
+   "description": "API key of a dedicated integration user on the cloud site.",
+   "fieldname": "api_key",
+   "fieldtype": "Data",
+   "label": "Cloud API Key"
+  },
+  {
+   "fieldname": "api_secret",
+   "fieldtype": "Password",
+   "label": "Cloud API Secret"
+  },
+  {
+   "fieldname": "column_break_cloud",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "60",
+   "fieldname": "request_timeout",
+   "fieldtype": "Int",
+   "label": "Request Timeout (seconds)"
+  },
+  {
+   "default": "sap_b1_key",
+   "description": "Custom field on the cloud Sales Invoice / Customer / Address / Item that holds the duplicate-check key. sap_b1_key is the field the SAP B1 Web Portal already uses.",
+   "fieldname": "cloud_key_field",
+   "fieldtype": "Data",
+   "label": "Cloud Key Field",
+   "reqd": 1
+  },
+  {
+   "description": "Short code for this local site, used in cloud keys of invoices that did not come from SAP (\"{code}|SINV-0001\"). Never change it after the first push.",
+   "fieldname": "local_site_code",
+   "fieldtype": "Data",
+   "label": "Local Site Code",
+   "reqd": 1
+  },
+  {
+   "fieldname": "safety_section",
+   "fieldtype": "Section Break",
+   "label": "Safety"
+  },
+  {
+   "default": "0",
+   "description": "No call of any kind is made to the cloud site until this or 'Allow production' is checked. E-invoice / e-way bill actions additionally require the cloud's GST Settings to be in sandbox mode.",
+   "fieldname": "sandbox_confirmed",
+   "fieldtype": "Check",
+   "label": "I confirm the cloud site is a TEST / SANDBOX site"
+  },
+  {
+   "default": "0",
+   "description": "Allows e-invoice / e-way bill actions against a cloud site whose GST Settings are NOT in sandbox mode, i.e. the live GST portal. Only check this after the sandbox test checklist has passed.",
+   "fieldname": "allow_production",
+   "fieldtype": "Check",
+   "label": "Allow production (live GST portal)"
+  },
+  {
+   "fieldname": "automation_section",
+   "fieldtype": "Section Break",
+   "label": "Automation"
+  },
+  {
+   "default": "0",
+   "description": "Queue a push to cloud (as a DRAFT) when a Sales Invoice of a mapped company is submitted. E-invoice / e-way bill are never generated automatically.",
+   "fieldname": "auto_push_on_submit",
+   "fieldtype": "Check",
+   "label": "Auto-push on submit"
+  },
+  {
+   "default": "0",
+   "description": "Off (default): when an invoice is found cancelled on the cloud site, AITS GST Managers are notified and the invoice shows a 'Cancel here too' button. On: the local invoice is cancelled automatically by a background job (reverses its accounting entries).",
+   "fieldname": "auto_cancel_local_on_cloud_cancel",
+   "fieldtype": "Check",
+   "label": "Auto-cancel local invoice when cancelled on cloud"
+  },
+  {
+   "default": "15",
+   "fieldname": "sync_interval_minutes",
+   "fieldtype": "Int",
+   "label": "Status Sync Interval (minutes)"
+  },
+  {
+   "default": "7",
+   "description": "Pushed invoices whose cloud status is polled: posted within this many days.",
+   "fieldname": "sync_lookback_days",
+   "fieldtype": "Int",
+   "label": "Status Sync Look-back (days)"
+  },
+  {
+   "fieldname": "column_break_automation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "5",
+   "description": "Failed pushes (network errors, cloud 5xx) are retried with exponential backoff: 5, 10, 20, 40, 80 minutes.",
+   "fieldname": "max_push_retries",
+   "fieldtype": "Int",
+   "label": "Max Push Retries"
+  },
+  {
+   "description": "Optional. Set the same secret on the cloud Webhook (Sales Invoice, on update) pointing to /api/method/aitsgst.api.cloud_webhook. The webhook only triggers a re-read from cloud; its payload is never trusted.",
+   "fieldname": "webhook_secret",
+   "fieldtype": "Password",
+   "label": "Webhook Secret"
+  },
+  {
+   "fieldname": "last_status_poll",
+   "fieldtype": "Datetime",
+   "label": "Last Status Poll",
+   "read_only": 1
+  },
+  {
+   "fieldname": "companies_section",
+   "fieldtype": "Section Break",
+   "label": "Company & Template Mapping"
+  },
+  {
+   "fieldname": "companies",
+   "fieldtype": "Table",
+   "label": "Companies",
+   "options": "AITS GST Company"
+  },
+  {
+   "description": "Only needed where a template's name differs between local and cloud; otherwise the local name is used as-is.",
+   "fieldname": "template_map",
+   "fieldtype": "Table",
+   "label": "Tax Template Map",
+   "options": "AITS GST Template Map"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-07 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "AITS GST",
+ "name": "AITS GST Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "AITS GST Manager"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

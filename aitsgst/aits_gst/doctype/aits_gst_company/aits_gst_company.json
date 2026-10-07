@@ -1,0 +1,122 @@
+{
+ "actions": [],
+ "creation": "2026-10-07 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "company",
+  "cloud_company",
+  "company_gstin",
+  "sap_company_code",
+  "column_break_masters",
+  "auto_create_customer",
+  "auto_create_item",
+  "create_items_as_stock_items",
+  "item_code_prefix",
+  "customer_group",
+  "territory",
+  "item_group"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Local Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "description": "Exact Company name on the cloud site.",
+   "fieldname": "cloud_company",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Cloud Company",
+   "reqd": 1
+  },
+  {
+   "description": "Every invoice pushed for this company must carry exactly this company GSTIN.",
+   "fieldname": "company_gstin",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Company GSTIN",
+   "length": 15,
+   "reqd": 1
+  },
+  {
+   "description": "Optional. When a local invoice came from SAP B1 (has SAP B1 DocEntry), the cloud key becomes \"{this code}|{DocEntry}\" — the same key the SAP B1 Web Portal uses, so an invoice the portal already pushed is adopted, not duplicated.",
+   "fieldname": "sap_company_code",
+   "fieldtype": "Data",
+   "label": "SAP Company Code (portal key)"
+  },
+  {
+   "fieldname": "column_break_masters",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_create_customer",
+   "fieldtype": "Check",
+   "label": "Create missing Customers on cloud"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_create_item",
+   "fieldtype": "Check",
+   "label": "Create missing Items on cloud"
+  },
+  {
+   "default": "0",
+   "depends_on": "auto_create_item",
+   "description": "Off (default): items are created on cloud as non-stock items, since stock is not kept there.",
+   "fieldname": "create_items_as_stock_items",
+   "fieldtype": "Check",
+   "label": "Create Items as stock items"
+  },
+  {
+   "description": "Cloud item_code = prefix + local item_code.",
+   "fieldname": "item_code_prefix",
+   "fieldtype": "Data",
+   "label": "Item Code Prefix"
+  },
+  {
+   "default": "All Customer Groups",
+   "fieldname": "customer_group",
+   "fieldtype": "Data",
+   "label": "Cloud Customer Group (new customers)"
+  },
+  {
+   "default": "All Territories",
+   "fieldname": "territory",
+   "fieldtype": "Data",
+   "label": "Cloud Territory (new customers)"
+  },
+  {
+   "default": "All Item Groups",
+   "fieldname": "item_group",
+   "fieldtype": "Data",
+   "label": "Cloud Item Group (new items)"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-07 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "AITS GST",
+ "name": "AITS GST Company",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

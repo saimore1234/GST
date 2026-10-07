@@ -1,0 +1,105 @@
+## AITS GST
+
+Pushes submitted Sales Invoices from a **local** (self-hosted) ERPNext site to a **cloud**
+ERPNext site, generates the e-invoice (IRN) and e-way bill **on the cloud site** through
+India Compliance there, and writes the results back onto the local Sales Invoice:
+IRN, Ack No / Date, signed QR (rendered as an image), e-way bill no / date / validity,
+vehicle details and cancel status.
+
+```
+SAP B1 --(sap_b1_integration)--> LOCAL ERPNext Sales Invoice
+                                     |  AITS GST: push (draft), then user-confirmed actions
+                                     v
+                               CLOUD ERPNext + India Compliance --> GST portal (IRN, e-way bill)
+                                     |
+                                     +--> results written back to the LOCAL invoice (poll / webhook)
+```
+
+Requires Frappe / ERPNext v15 and India Compliance on both sites.
+
+### Install (local bench)
+
+```bash
+cd ~/frappe-bench
+bench get-app <git-url-of-this-repo>      # or: copy into apps/ and `./env/bin/pip install -e apps/aitsgst`
+bench --site <local-site> install-app aitsgst
+bench --site <local-site> migrate          # also after every update of this app
+bench restart                              # production setups (supervisor) only
+```
+
+`install-app` creates the DocTypes, the **AITS GST Manager** role, the `aitsgst_*` custom
+fields on Sales Invoice (from `fixtures/`) and the **AITS GST e-Invoice** print format.
+Make sure the scheduler is enabled (`bench --site <local-site> enable-scheduler`).
+
+### Configure
+
+1. **Cloud site** (one-time, by its administrator):
+   - Create an integration user (e.g. `aitsgst@yourco`) with roles *Accounts User*, *Sales User*,
+     *Stock User* (to read UOM / Stock Settings) and permission to read *GST Settings*,
+     *e-Invoice Log*, *e-Waybill Log*. Generate its API key / secret.
+   - Custom field **`sap_b1_key`** (Data, read only, no copy) on *Sales Invoice* (also *Unique*),
+     *Customer*, *Address* and *Item*. If the SAP B1 Web Portal was already set up for this site
+     (its "setup custom fields" action), these exist already.
+   - India Compliance GST Settings: API enabled, e-Invoice / e-Waybill enabled, credentials for
+     the company GSTIN, and **Sandbox Mode ON** until the checklist below passes.
+2. **Local site → AITS GST Settings** (System Manager):
+   - Cloud Site URL (https site root only), API Key, API Secret (stored encrypted in a Password field).
+   - Local Site Code (used in keys; cannot change after the first push).
+   - Companies: local company → cloud company name, company GSTIN, optional SAP Company Code
+     (then invoices from SAP use the same key as the SAP B1 Web Portal: `{code}|{DocEntry}`).
+   - Tax Template Map: only where template names differ between local and cloud.
+   - Tick **"I confirm the cloud site is a TEST / SANDBOX site"**. Until this (or "Allow production")
+     is ticked, the app makes **no call of any kind** to the cloud.
+   - Use **Test Connection** (read-only checks) and fix anything red.
+3. Give users the **AITS GST Manager** role.
+
+> **Local India Compliance:** IRNs must be generated only on the cloud. If this local site's
+> GST Settings has the API enabled for e-Invoice / e-Waybill, the settings page shows a warning:
+> disable them locally, or the same invoice could be registered twice.
+
+### Use
+
+On a submitted local Sales Invoice, **Cloud GST** menu:
+
+| Button | What happens |
+|---|---|
+| Push to Cloud | Background job. Creates a **draft** on cloud (never submits). Looks up the key first, so it never duplicates; creates missing Customer / Address / Item only if enabled; copies tax rows from the cloud's own templates; reconciles totals (Match / Mismatch). |
+| Generate e-Invoice | Confirm dialog. Submits the cloud draft, calls India Compliance there, writes IRN / Ack / QR back. Refused on totals mismatch, B2C, missing credentials, or production mode without "Allow production". |
+| Generate e-Way Bill | Confirm dialog with transport details (pre-filled from the invoice). |
+| Update Vehicle (Part-B) | Confirm dialog; only while an e-way bill is active. |
+| Cancel e-Invoice / e-Way Bill | Confirm dialog with reason; only within 24 h. Cancels only the IRN / e-way bill. |
+| **Cancel Everywhere** | Confirm dialog. Checks first (24 h window, reason, linked payments on cloud and here, production gate); if anything fails, nothing is cancelled. Then: IRN + e-way bill on the GST portal → cloud invoice (a cloud draft is deleted) → this invoice. If it stops part-way it says which steps were done; run it again to continue. |
+| Refresh from Cloud | Re-reads the cloud invoice and its logs. |
+
+Status badges and the QR show on the form (tab **Cloud GST**). Print with **AITS GST e-Invoice**.
+
+**Cancelling:** the normal Cancel button is refused while the IRN, e-way bill or cloud invoice is still
+active - use **Cancel Everywhere**. When an invoice is cancelled (or deleted) **on the cloud site**, the
+status sync marks it, notifies AITS GST Managers and shows a red "Cancel here too" banner. With
+*Auto-cancel local invoice when cancelled on cloud* (off by default) the local invoice is cancelled
+automatically instead.
+
+**Automation (all off or read-only by default):** optional auto-push on submit; failed pushes caused by
+network errors / cloud 5xx are retried at 5, 10, 20, 40, 80 minutes (Max Push Retries); the
+cloud is polled every *Status Sync Interval* minutes for changes made there (cancel, vehicle update).
+Optionally add a cloud **Webhook** (Sales Invoice, on update / on cancel, *Enable Security* with the
+same secret as *Webhook Secret*) to `https://<local-site>/api/method/aitsgst.api.cloud_webhook`; it
+only triggers a re-read. Nothing is generated, submitted or cancelled automatically.
+
+Every action is recorded in **AITS GST Sync Log** (request / response with secrets masked).
+
+### Tests
+
+```bash
+bench --site <local-site> set-config allow_tests true   # if not already
+bench --site <local-site> run-tests --app aitsgst
+```
+
+The suite never calls the network (the cloud is an in-memory fake; `requests` is patched to fail),
+never creates Sales Invoices, and never commits.
+
+See [SANDBOX_TEST_CHECKLIST.md](SANDBOX_TEST_CHECKLIST.md) before production.
+
+### License
+
+MIT

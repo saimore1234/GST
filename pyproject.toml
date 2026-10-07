@@ -1,0 +1,36 @@
+[project]
+name = "aitsgst"
+authors = [
+    { name = "AITS", email = "admin@aitsind.com"}
+]
+description = "Push local ERPNext Sales Invoices to a cloud ERPNext site for e-invoice / e-way bill, and sync the results back"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    # "frappe~=15.0.0" # Installed and managed by bench.
+    # requests and pyqrcode are already installed by frappe / india_compliance.
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench.dev-dependencies]
+
+[deploy.dependencies.apt]
+packages = []
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "RUF"]
+ignore = ["B017", "B018", "B023", "B904", "E101", "E402", "E501", "E741", "F401", "F403", "F405", "F722", "W191"]
+typing-modules = ["frappe.types.DF"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"
+docstring-code-format = true

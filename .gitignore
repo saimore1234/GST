@@ -1,0 +1,11 @@
+.DS_Store
+*.pyc
+*.egg-info
+*.swp
+tags
+node_modules
+__pycache__
+# Secrets never belong in this repo: cloud API key/secret live only in the
+# AITS GST Settings Password field (encrypted with the site's encryption_key).
+site_config.json
+*.env
