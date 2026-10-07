@@ -98,6 +98,7 @@ class PushService:
 
 	# --------------------------------------------------------- prerequisites
 	def _prepare(self, plan, company_cfg):
+		self._resolve_templates(plan, company_cfg)
 		for uom in plan.uoms:
 			if self.client.get_doc("UOM", uom) is None:
 				raise PushProblem(f"Unit of measure '{uom}' does not exist in the GST service. Create it there and push again.")
@@ -143,6 +144,40 @@ class PushService:
 		if c.get("gstin"):
 			doc["gstin"] = c["gstin"]
 		return self.client.insert("Customer", doc)["name"]
+
+	def _resolve_templates(self, plan, company_cfg):
+		"""ERPNext names tax templates "<title> - <company abbr>", so the local "Output GST Out-state - CEII" is
+		"Output GST Out-state - <GST service company abbr>" there. Names from the Tax Template Map are used
+		as-is; any other name not found in the GST service is retried with the GST service company's abbr."""
+		explicit = set(self.cfg.template_map.values())
+		cache, abbr = {}, []
+
+		def cloud_abbr():
+			if not abbr:
+				abbr.append((self.client.get_doc("Company", company_cfg.get("cloud_company")) or {}).get("abbr") or "")
+			return abbr[0]
+
+		def resolve(doctype, name):
+			if not name or name in explicit:
+				return name
+			if (doctype, name) not in cache:
+				result = name
+				if " - " in name and self.client.get_doc(doctype, name) is None and cloud_abbr():
+					candidate = f"{name.rsplit(' - ', 1)[0]} - {cloud_abbr()}"
+					if candidate != name and self.client.get_doc(doctype, candidate) is not None:
+						result = candidate
+				cache[(doctype, name)] = result
+			return cache[(doctype, name)]
+
+		plan.cloud_tax_template = resolve(TAX_TEMPLATE, plan.cloud_tax_template)
+		if plan.cloud_tax_template:
+			plan.payload["taxes_and_charges"] = plan.cloud_tax_template
+		for line in plan.payload["items"]:
+			if line.get("item_tax_template"):
+				line["item_tax_template"] = resolve(ITEM_TAX_TEMPLATE, line["item_tax_template"])
+		for item in plan.items:
+			if item.get("item_tax_template"):
+				item["item_tax_template"] = resolve(ITEM_TAX_TEMPLATE, item["item_tax_template"])
 
 	def _customer_group(self, configured: str | None) -> str:
 		"""ERPNext rejects a group (tree folder) Customer Group such as "All Customer Groups". Use the

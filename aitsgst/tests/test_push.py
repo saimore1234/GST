@@ -130,6 +130,23 @@ class TestPush(unittest.TestCase):
 		self.assertEqual(result["outcome"], "Blocked")
 		self.assertIn("Output GST Out-state - TTC", result["problems"][0])
 
+	def test_templates_resolved_by_company_abbr_without_map(self):
+		# local "... - TTC" -> GST service "... - TTCC", found automatically from the cloud company's abbr
+		self.ctx.cfg.template_map = {}
+		self.cloud.add("Company", name=s.COMPANY_CFG["cloud_company"], abbr="TTCC")
+		result = self.svc.push(NAME)
+		self.assertEqual(result["outcome"], "Created", result)
+		[cloud_si] = self.cloud.docs["Sales Invoice"].values()
+		self.assertEqual(cloud_si["taxes_and_charges"], "Output GST Out-state - TTCC")
+		self.assertEqual(cloud_si["items"][0]["item_tax_template"], "GST 18% - TTCC")
+		self.assertEqual(self.cloud.docs["Item"]["PAINT-01"]["taxes"], [{"item_tax_template": "GST 18% - TTCC"}])
+
+	def test_mapped_template_wins_over_abbr_guess(self):
+		self.cloud.add("Company", name=s.COMPANY_CFG["cloud_company"], abbr="ZZZ")
+		self.assertEqual(self.svc.push(NAME)["outcome"], "Created")
+		[cloud_si] = self.cloud.docs["Sales Invoice"].values()
+		self.assertEqual(cloud_si["taxes_and_charges"], "Output GST Out-state - TTCC")  # from the map
+
 	def test_group_customer_group_falls_back_to_selling_settings_default(self):
 		# configured default "All Customer Groups" is a tree folder, which ERPNext rejects for a Customer
 		self.svc.push(NAME)
