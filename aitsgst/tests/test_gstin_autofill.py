@@ -14,7 +14,7 @@ from aitsgst.tests import fakes
 GSTIN = "27AAPFU0939F1ZV"
 INFO = {
 	"gstin": GSTIN, "business_name": "Acme Builders Private Limited", "gst_category": "Registered Regular", "status": "Active",
-	"permanent_address": {"address_line1": "1, Mg Road", "address_line2": "Camp", "city": "Pune", "state": "Maharashtra",
+	"permanent_address": {"address_line1": "1, Mg Road", "address_line2": "PU 4 Commercial, ", "city": "Pune", "state": "Maharashtra",
 	                      "pincode": "411001", "country": "India"},
 	"all_addresses": [{"address_line1": "1, Mg Road", "city": "Pune", "state": "Maharashtra", "pincode": "411001", "country": "India"}],
 	"some_internal_field": "not passed to the browser",
@@ -47,6 +47,7 @@ class TestGstinAutofill(FrappeTestCase):
 		self.assertEqual(result["business_name"], "Acme Builders Private Limited")
 		self.assertEqual(result["gst_category"], "Registered Regular")
 		self.assertEqual(result["permanent_address"]["pincode"], "411001")
+		self.assertEqual(result["permanent_address"]["address_line2"], "PU 4 Commercial")  # stray ", " removed
 		self.assertNotIn("some_internal_field", result)
 
 	def test_cached_so_the_service_is_asked_once(self):

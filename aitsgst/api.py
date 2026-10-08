@@ -186,9 +186,18 @@ def get_gstin_details(gstin: str):
 		frappe.throw(_("Could not fetch details for GSTIN {0}: {1}").format(gstin, escape_html(e.message)), title=_("GSTIN"))
 
 	result = {k: info.get(k) for k in GSTIN_FIELDS}
+	result["permanent_address"] = _clean_address(result["permanent_address"])
+	result["all_addresses"] = [_clean_address(a) for a in result["all_addresses"] or []]
 	if result["business_name"] or result["permanent_address"]:
 		frappe.cache.set_value(cache_key, result, expires_in_sec=GSTIN_CACHE_SECONDS)
 	return result
+
+
+def _clean_address(address: dict | None) -> dict | None:
+	"""The GST portal's address parts often end in stray separators ("PU 4 Commercial, ")."""
+	if not address:
+		return address
+	return {k: (v.strip().strip(",").strip() or None) if isinstance(v, str) else v for k, v in address.items()}
 
 
 def _gstin_autofill_enabled() -> bool:
