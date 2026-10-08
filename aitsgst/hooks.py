@@ -10,7 +10,13 @@ required_apps = ["erpnext", "india_compliance"]
 before_install = "aitsgst.install.before_install"
 after_install = "aitsgst.install.after_install"
 
-doctype_js = {"Sales Invoice": "public/js/sales_invoice.js"}
+doctype_js = {
+	"Sales Invoice": "public/js/sales_invoice.js",
+	# GSTIN -> legal name, GST category, registered address (through the GST service)
+	"Customer": "public/js/gstin_autofill.js",
+	"Supplier": "public/js/gstin_autofill.js",
+	"Address": "public/js/gstin_autofill.js",
+}
 
 doc_events = {
 	"Sales Invoice": {

@@ -20,6 +20,7 @@
   "automation_section",
   "auto_push_on_submit",
   "auto_cancel_local_on_cloud_cancel",
+  "gstin_autofill",
   "sync_interval_minutes",
   "sync_lookback_days",
   "column_break_automation",
@@ -128,6 +129,13 @@
    "label": "Auto-cancel invoice when its e-invoice record is cancelled"
   },
   {
+   "default": "1",
+   "description": "When a GSTIN is entered on a Customer, Supplier or Address, fetch the legal name, GST category and registered address through the GST service (uses its India Compliance API credits; each GSTIN is cached for 24 hours). Fields you already filled are never overwritten.",
+   "fieldname": "gstin_autofill",
+   "fieldtype": "Check",
+   "label": "Fill party details from GSTIN"
+  },
+  {
    "default": "15",
    "fieldname": "sync_interval_minutes",
    "fieldtype": "Int",
@@ -185,7 +193,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-08 10:00:00.000000",
+ "modified": "2026-10-08 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "AITS GST",
  "name": "AITS GST Settings",

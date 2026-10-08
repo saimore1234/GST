@@ -17,6 +17,7 @@ from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, escape_html
 
 from aitsgst.core.cloud_client import CloudError
+from aitsgst.core.gst import is_valid_gstin, normalize_gstin
 from aitsgst.services.compliance import Blocked, ComplianceService, ConfirmationRequired
 from aitsgst.services.context import GateClosed, SyncLog, build_client, get_context, load_config
 from aitsgst.services.push import PushService
@@ -150,6 +151,49 @@ def get_transport_defaults(name: str):
 	si = frappe.db.get_value("Sales Invoice", name, ["mode_of_transport", "vehicle_no", "gst_vehicle_type", "gst_transporter_id",
 	                                                 "transporter_name", "lr_no", "lr_date", "distance"], as_dict=True) or {}
 	return {k: v for k, v in si.items() if v not in (None, "")}
+
+
+# ================================================================ GSTIN autofill
+GSTIN_INFO_METHOD = "india_compliance.gst_india.utils.gstin_info.get_gstin_info"
+GSTIN_CACHE_SECONDS = 24 * 60 * 60
+GSTIN_FIELDS = ("gstin", "business_name", "gst_category", "status", "permanent_address", "all_addresses")
+
+
+@frappe.whitelist(methods=["POST"])
+@rate_limit(limit=60, seconds=60)
+def get_gstin_details(gstin: str):
+	"""Legal name, GST category, status and registered addresses of a GSTIN, looked up through the
+	GST service's India Compliance API. Returns {"disabled": True} when the feature is off."""
+	if frappe.session.user == "Guest" or not frappe.get_cached_doc("User", frappe.session.user).has_desk_access():
+		raise frappe.PermissionError(_("Not allowed"))
+
+	gstin = normalize_gstin(gstin)
+	if not is_valid_gstin(gstin):
+		frappe.throw(_("{0} is not a valid GSTIN.").format(escape_html(gstin or "")), title=_("GSTIN"))
+
+	if not _gstin_autofill_enabled():
+		return {"disabled": True}
+
+	cache_key = f"aitsgst:gstin:{gstin}"
+	# expires=True: read Redis directly; without it a miss is memoised for the rest of the request.
+	cached = frappe.cache.get_value(cache_key, expires=True)
+	if cached:
+		return cached
+
+	try:
+		info = get_context().client.call(GSTIN_INFO_METHOD, gstin=gstin) or {}
+	except CloudError as e:
+		frappe.throw(_("Could not fetch details for GSTIN {0}: {1}").format(gstin, escape_html(e.message)), title=_("GSTIN"))
+
+	result = {k: info.get(k) for k in GSTIN_FIELDS}
+	if result["business_name"] or result["permanent_address"]:
+		frappe.cache.set_value(cache_key, result, expires_in_sec=GSTIN_CACHE_SECONDS)
+	return result
+
+
+def _gstin_autofill_enabled() -> bool:
+	cfg = load_config()
+	return bool(cfg.enabled and cfg.gate_open and frappe.db.get_single_value("AITS GST Settings", "gstin_autofill"))
 
 
 # ======================================================================= setup
