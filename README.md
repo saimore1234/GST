@@ -92,6 +92,13 @@ Optionally add a cloud **Webhook** (Sales Invoice, on update / on cancel, *Enabl
 same secret as *Webhook Secret*) to `https://<local-site>/api/method/aitsgst.api.status_webhook`; it
 only triggers a re-read. Nothing is generated, submitted or cancelled automatically.
 
+**GSTIN autofill** (setting *Fill party details from GSTIN*, on by default): entering a GSTIN on a
+Customer, Supplier or Address - in the full form **and** in India Compliance's "+ Add" quick-entry popup -
+fills the legal name, GST category and registered address, looked up through the GST service (so the
+local site needs no India Compliance API account). Existing values are never overwritten; each GSTIN is
+cached for 24 hours. After updating the app run `bench build --app aitsgst` once, so its browser script
+is served.
+
 Every action is recorded in **AITS GST Sync Log** (request / response with secrets masked).
 
 ### Tests

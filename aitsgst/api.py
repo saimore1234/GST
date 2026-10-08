@@ -193,6 +193,24 @@ def get_gstin_details(gstin: str):
 	return result
 
 
+@frappe.whitelist()
+def get_gstin_info_compat(gstin: str | None = None, doc=None, throw_error=True):
+	"""Replaces India Compliance's get_gstin_info (override_whitelisted_methods), so its own quick-entry
+	popups and setup wizard autofill through the GST service. Same result shape as India Compliance.
+	When AITS GST autofill is off, India Compliance's original runs unchanged."""
+	if not _gstin_autofill_enabled():
+		from india_compliance.gst_india.utils.gstin_info import get_gstin_info
+
+		return get_gstin_info(gstin, doc=doc, throw_error=throw_error)
+	try:
+		return frappe._dict(get_gstin_details(gstin))
+	except Exception:
+		if cint(throw_error):
+			raise
+		frappe.clear_last_message()
+		return frappe._dict()
+
+
 def _clean_address(address: dict | None) -> dict | None:
 	"""The GST portal's address parts often end in stray separators ("PU 4 Commercial, ")."""
 	if not address:

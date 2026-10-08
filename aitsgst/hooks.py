@@ -10,6 +10,13 @@ required_apps = ["erpnext", "india_compliance"]
 before_install = "aitsgst.install.before_install"
 after_install = "aitsgst.install.after_install"
 
+# India Compliance's quick-entry popups: GSTIN autofill through the GST service (see api.get_gstin_info_compat)
+app_include_js = ["/assets/aitsgst/js/gstin_quick_entry.js"]
+boot_session = "aitsgst.boot.set_bootinfo"
+override_whitelisted_methods = {
+	"india_compliance.gst_india.utils.gstin_info.get_gstin_info": "aitsgst.api.get_gstin_info_compat",
+}
+
 doctype_js = {
 	"Sales Invoice": "public/js/sales_invoice.js",
 	# GSTIN -> legal name, GST category, registered address (through the GST service)

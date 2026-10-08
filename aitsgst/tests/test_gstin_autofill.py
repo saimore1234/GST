@@ -83,6 +83,40 @@ class TestGstinAutofill(FrappeTestCase):
 		self.call()
 		self.assertEqual(self.cloud.count("call", api.GSTIN_INFO_METHOD), 2)
 
+	# ---------------------------------------- India Compliance quick-entry popups
+	def compat(self, enabled=True, **kwargs):
+		with patch("aitsgst.api._gstin_autofill_enabled", return_value=enabled), patch("aitsgst.api.get_context", return_value=self.ctx):
+			return api.get_gstin_info_compat(**kwargs)
+
+	def test_popup_lookup_goes_through_the_service(self):
+		result = self.compat(gstin=GSTIN, doc={"doctype": "Customer"})
+		self.assertEqual(result.business_name, "Acme Builders Private Limited")  # same shape India Compliance returns
+		self.assertEqual(result.permanent_address["city"], "Pune")
+
+	def test_popup_falls_back_to_india_compliance_when_off(self):
+		with patch("india_compliance.gst_india.utils.gstin_info.get_gstin_info", return_value={"from": "india_compliance"}) as ic:
+			self.assertEqual(self.compat(enabled=False, gstin=GSTIN), {"from": "india_compliance"})
+		ic.assert_called_once()
+		self.assertEqual(self.cloud.calls, [])
+
+	def test_popup_quiet_failure_when_asked(self):
+		self.cloud.fail("call", api.GSTIN_INFO_METHOD, CloudError("boom"))
+		self.assertEqual(self.compat(gstin=GSTIN, throw_error=0), {})
+		self.cloud.fail("call", api.GSTIN_INFO_METHOD, CloudError("boom"))
+		with self.assertRaises(frappe.ValidationError):
+			self.compat(gstin=GSTIN, throw_error=1)
+
+	def test_popup_hooks(self):
+		overrides = frappe.get_hooks("override_whitelisted_methods")
+		self.assertEqual(overrides["india_compliance.gst_india.utils.gstin_info.get_gstin_info"][-1], "aitsgst.api.get_gstin_info_compat")
+		self.assertIn("/assets/aitsgst/js/gstin_quick_entry.js", frappe.get_hooks("app_include_js"))
+		from aitsgst.boot import set_bootinfo
+
+		boot = {}
+		with patch("aitsgst.api._gstin_autofill_enabled", return_value=True):
+			set_bootinfo(boot)
+		self.assertTrue(boot["aitsgst_gstin_autofill"])
+
 	def test_hooked_on_party_and_address_forms(self):
 		doctype_js = frappe.get_hooks("doctype_js")
 		for doctype in ("Customer", "Supplier", "Address"):
