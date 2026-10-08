@@ -20,7 +20,7 @@ from aitsgst.core.cloud_client import CloudError
 from aitsgst.core.gst import is_valid_gstin, normalize_gstin
 from aitsgst.services.compliance import Blocked, ComplianceService, ConfirmationRequired
 from aitsgst.services.context import GateClosed, SyncLog, build_client, get_context, load_config
-from aitsgst.services.push import PushService
+from aitsgst.services.push import COMPANY_FIELD, PushService
 
 ROLES = ("AITS GST Manager", "System Manager")
 
@@ -277,6 +277,12 @@ def test_connection():
 			check(f"Key field {cfg.key_field} in the GST service {doctype}", False,
 			      f"Missing or not queryable - create custom field '{cfg.key_field}' (Data, unique for Sales Invoice) in the GST service. {e.message}")
 
+	for doctype in ("Customer", "Item", "Address"):
+		present = _service_has_field(client, doctype, COMPANY_FIELD)
+		check(f"Company field on GST service {doctype}", True,
+		      "present: each company has its own records" if present
+		      else "not present: records are shared by all companies (fine for one client; use 'Set up GST Service Fields' for several)")
+
 	for (template_type, local), cloud_name in cfg.template_map.items():
 		try:
 			check(f"GST service {template_type} '{cloud_name}'", client.get_doc(template_type, cloud_name) is not None)
@@ -284,6 +290,59 @@ def test_connection():
 			check(f"GST service {template_type} '{cloud_name}'", False, e.message)
 
 	return _checks_result(checks)
+
+
+def _service_has_field(client, doctype: str, fieldname: str) -> bool:
+	try:
+		client.get_list(doctype, [[fieldname, "=", "__aitsgst_probe__"]], ["name"], 1)
+		return True
+	except CloudError as e:
+		if e.status_code in (400, 417):
+			return False
+		raise
+
+
+def service_field_definitions(key_field: str) -> list:
+	"""Custom fields the app needs on the GST service. Created by 'Set up GST Service Fields', or by hand."""
+	fields = [
+		{"dt": dt, "fieldname": key_field, "label": "AITS GST Key", "fieldtype": "Data", "read_only": 1, "no_copy": 1,
+		 "search_index": 1, "unique": 1 if dt == "Sales Invoice" else 0}
+		for dt in ("Sales Invoice", "Customer", "Address", "Item")
+	]
+	fields += [
+		{"dt": dt, "fieldname": COMPANY_FIELD, "label": "Client Company", "fieldtype": "Link", "options": "Company",
+		 "no_copy": 1, "search_index": 1, "in_standard_filter": 1}
+		for dt in ("Customer", "Address", "Item")
+	]
+	return fields
+
+
+@frappe.whitelist(methods=["POST"])
+def setup_service_fields(confirm=0):
+	"""Creates the missing custom fields on the GST service. Needs a GST service API user allowed to create
+	Custom Fields (System Manager). Never changes or deletes an existing field."""
+	if frappe.session.user != "Administrator" and "System Manager" not in frappe.get_roles():
+		raise frappe.PermissionError(_("Only a System Manager can set up GST service fields."))
+	cfg = load_config()
+	client = build_client(cfg)
+	if not cint(confirm):
+		frappe.throw(_("Confirmation is required: this adds custom fields to the GST service."))
+
+	results = []
+	for field in service_field_definitions(cfg.key_field):
+		label = f"{field['dt']}.{field['fieldname']}"
+		try:
+			if _service_has_field(client, field["dt"], field["fieldname"]):
+				results.append({"field": label, "status": "already present"})
+				continue
+			client.insert("Custom Field", field)
+			results.append({"field": label, "status": "created"})
+		except CloudError as e:
+			hint = " (the GST service API user needs the System Manager role to create fields; or create it by hand)" if e.status_code == 403 else ""
+			results.append({"field": label, "status": f"failed: {e.message}{hint}"})
+	ok = all(not r["status"].startswith("failed") for r in results)
+	SyncLog().write("Setup Fields", "Success" if ok else "Failed", None, "; ".join(f"{r['field']}: {r['status']}" for r in results))
+	return {"success": ok, "results": results}
 
 
 def _checks_result(checks):

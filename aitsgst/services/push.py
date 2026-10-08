@@ -20,6 +20,7 @@ from aitsgst.core.reconcile import reconcile
 
 SI = "Sales Invoice"
 RETRY_BASE_MINUTES = 5
+COMPANY_FIELD = "aitsgst_company"  # on the GST service's Customer / Item / Address: the client company owning it
 
 
 class PushProblem(Exception):
@@ -98,6 +99,7 @@ class PushService:
 
 	# --------------------------------------------------------- prerequisites
 	def _prepare(self, plan, company_cfg):
+		self._company_cfg = company_cfg
 		self._resolve_templates(plan, company_cfg)
 		for uom in plan.uoms:
 			if self.client.get_doc("UOM", uom) is None:
@@ -110,8 +112,13 @@ class PushService:
 		plan.payload["customer"] = customer_name
 		for addr in plan.addresses:
 			plan.payload[addr["role"]] = self._ensure_address(addr, customer_name)
+		renamed = {}
 		for item in plan.items:
-			self._ensure_item(item)
+			code = self._ensure_item(item)
+			if code != item["cloud_code"]:
+				renamed[item["cloud_code"]] = code
+		for line in plan.payload["items"]:
+			line["item_code"] = renamed.get(line["item_code"], line["item_code"])
 
 		company_address = self._company_address(company_cfg.get("company_gstin"))
 		if company_address:
@@ -119,7 +126,43 @@ class PushService:
 
 		self._attach_taxes(plan)
 
+	# ------------------------------------------- one GST service, several client companies
+	# When the GST service's Customer / Item / Address have the field aitsgst_company (Link to Company), every
+	# master is tagged with the client's company and only that company's masters are ever matched or changed:
+	# clients sharing one GST service never touch each other's records, and User Permissions (Company = X)
+	# on each client's API user hide the other clients' data. Without the field, masters are shared (one client).
+	def _tag(self, doctype: str) -> str | None:
+		if not hasattr(self, "_tag_cache"):
+			self._tag_cache = {}
+		if doctype not in self._tag_cache:
+			try:
+				self.client.get_list(doctype, [[COMPANY_FIELD, "=", "__aitsgst_probe__"]], ["name"], 1)
+				present = True
+			except CloudError as e:
+				if e.status_code not in (400, 417):
+					raise
+				present = False  # "Field not permitted in query": the GST service has no company field
+			self._tag_cache[doctype] = present
+		return self._company_cfg.get("cloud_company") if self._tag_cache[doctype] else None
+
+	def _is_ours(self, key: str | None) -> bool:
+		"""An untagged record (created before the company field existed) is claimed only if it has no key or a
+		key written by this site (or this client's SAP B1 Web Portal)."""
+		if not key:
+			return True
+		own = {self.cfg.site_code, (self._company_cfg or {}).get("sap_company_code")}
+		return key.split("|", 1)[0] in own - {None, ""}
+
+	def _cloud_abbr(self, company_cfg=None) -> str:
+		if not hasattr(self, "_abbr"):
+			cfg = company_cfg or self._company_cfg
+			self._abbr = (self.client.get_doc("Company", cfg.get("cloud_company")) or {}).get("abbr") or ""
+		return self._abbr
+
 	def _ensure_customer(self, c: dict) -> str:
+		tag = self._tag("Customer")
+		if tag:
+			return self._ensure_customer_tagged(c, tag)
 		found = self._find_by_key("Customer", c["key"])
 		if found:
 			return found
@@ -135,6 +178,42 @@ class PushService:
 			self._adopt("Customer", existing, c["key"], f"Customer '{c['name']}'")
 			return existing["name"]
 
+		return self._create_customer(c, tag=None)
+
+	def _ensure_customer_tagged(self, c: dict, tag: str) -> str:
+		fields = ["name", self.key_field, COMPANY_FIELD]
+		by_key = self.client.get_list("Customer", [[self.key_field, "=", c["key"]]], fields, 1)
+		if by_key:
+			if not by_key[0].get(COMPANY_FIELD):
+				self.client.update("Customer", by_key[0]["name"], {COMPANY_FIELD: tag})
+			return by_key[0]["name"]
+
+		mine = self.client.get_list("Customer", [["customer_name", "=", c["name"]], [COMPANY_FIELD, "=", tag]], fields, 2)
+		if len(mine) > 1:
+			raise PushProblem(f"Company {tag} has more than one GST service Customer named '{c['name']}'. Set the key field "
+			                  f"({self.key_field}={c['key']}) on the right one and push again.")
+		if mine:
+			if not mine[0].get(self.key_field):
+				self.client.update("Customer", mine[0]["name"], {self.key_field: c["key"]})
+			return mine[0]["name"]
+
+		untagged = [r for r in self.client.get_list("Customer", [["customer_name", "=", c["name"]], [COMPANY_FIELD, "is", "not set"]], fields, 5)
+		            if self._is_ours(r.get(self.key_field))]
+		if len(untagged) > 1:
+			raise PushProblem(f"More than one untagged GST service Customer is named '{c['name']}'. Set {COMPANY_FIELD} = {tag} "
+			                  "on the right one and push again.")
+		if untagged:
+			values = {COMPANY_FIELD: tag}
+			if not untagged[0].get(self.key_field):
+				values[self.key_field] = c["key"]
+			self.client.update("Customer", untagged[0]["name"], values)
+			return untagged[0]["name"]
+
+		# Customers of other client companies are never touched: this company gets its own record
+		# (ERPNext names it "<name> - 1" when the name is taken).
+		return self._create_customer(c, tag)
+
+	def _create_customer(self, c: dict, tag: str | None) -> str:
 		if not c["create_if_missing"]:
 			raise PushProblem(f"Customer '{c['name']}' does not exist in the GST service and 'Create missing Customers' is off.")
 		doc = {
@@ -143,6 +222,8 @@ class PushService:
 		}
 		if c.get("gstin"):
 			doc["gstin"] = c["gstin"]
+		if tag:
+			doc[COMPANY_FIELD] = tag
 		return self.client.insert("Customer", doc)["name"]
 
 	def _resolve_templates(self, plan, company_cfg):
@@ -150,12 +231,10 @@ class PushService:
 		"Output GST Out-state - <GST service company abbr>" there. Names from the Tax Template Map are used
 		as-is; any other name not found in the GST service is retried with the GST service company's abbr."""
 		explicit = set(self.cfg.template_map.values())
-		cache, abbr = {}, []
+		cache = {}
 
 		def cloud_abbr():
-			if not abbr:
-				abbr.append((self.client.get_doc("Company", company_cfg.get("cloud_company")) or {}).get("abbr") or "")
-			return abbr[0]
+			return self._cloud_abbr(company_cfg)
 
 		def resolve(doctype, name):
 			if not name or name in explicit:
@@ -202,33 +281,76 @@ class PushService:
 		doc = {k: v for k, v in a["doc"].items() if v not in (None, "")}
 		doc[self.key_field] = a["key"]
 		doc["links"] = [{"link_doctype": "Customer", "link_name": customer_name}]
+		tag = self._tag("Address")
+		if tag:
+			doc[COMPANY_FIELD] = tag
 		return self.client.insert("Address", doc)["name"]
 
-	def _ensure_item(self, i: dict):
+	def _ensure_item(self, i: dict) -> str:
+		"""Returns the GST service item code used for this item."""
+		tag = self._tag("Item")
+		if tag:
+			return self._ensure_item_tagged(i, tag)
 		if self._find_by_key("Item", i["key"]):
-			return
+			return i["cloud_code"]
 		existing = self.client.get_doc("Item", i["cloud_code"])
 		if existing:
 			self._adopt("Item", existing, i["key"], f"Item '{i['cloud_code']}'")
-			return
+			return i["cloud_code"]
+		return self._create_item(i, i["cloud_code"], tag=None)
+
+	def _ensure_item_tagged(self, i: dict, tag: str) -> str:
+		by_key = self.client.get_list("Item", [[self.key_field, "=", i["key"]]], ["name", COMPANY_FIELD], 1)
+		if by_key:
+			if not by_key[0].get(COMPANY_FIELD):
+				self.client.update("Item", by_key[0]["name"], {COMPANY_FIELD: tag})
+			return by_key[0]["name"]
+
+		# Item codes are unique across the whole GST service: if another client company already uses this
+		# code, this company's item gets "<company abbr>-<code>".
+		candidates = [i["cloud_code"]]
+		abbr = self._cloud_abbr()
+		if abbr and not i["cloud_code"].startswith(f"{abbr}-"):
+			candidates.append(f"{abbr}-{i['cloud_code']}")
+		for code in candidates:
+			existing = self.client.get_doc("Item", code)
+			if existing is None:
+				return self._create_item(i, code, tag)
+			owner, key = existing.get(COMPANY_FIELD), existing.get(self.key_field)
+			if owner == tag or (not owner and self._is_ours(key)):
+				values = {}
+				if not owner:
+					values[COMPANY_FIELD] = tag
+				if not key:
+					values[self.key_field] = i["key"]
+				if values:
+					self.client.update("Item", code, values)
+				return code
+		raise PushProblem(f"Item code '{i['cloud_code']}' is already used in the GST service by another company"
+		                  + (f", and so is '{candidates[-1]}'" if len(candidates) > 1 else "")
+		                  + ". Set an Item Code Prefix for this company in AITS GST Settings.")
+
+	def _create_item(self, i: dict, code: str, tag: str | None) -> str:
 		if not i["create_if_missing"]:
-			raise PushProblem(f"Item '{i['cloud_code']}' does not exist in the GST service and 'Create missing Items' is off.")
+			raise PushProblem(f"Item '{code}' does not exist in the GST service and 'Create missing Items' is off.")
 
 		stock_settings = self.client.get_doc("Stock Settings", "Stock Settings") or {}
 		valuation_method = stock_settings.get("valuation_method")
 		if not valuation_method:
 			raise PushProblem("GST service Stock Settings has no default Valuation Method, which new Items require. Set one there and push again.")
 		doc = {
-			"item_code": i["cloud_code"], "item_name": i["item_name"], "description": i["description"],
+			"item_code": code, "item_name": i["item_name"], "description": i["description"],
 			"item_group": i["item_group"], "stock_uom": i["stock_uom"], "is_stock_item": i["is_stock_item"],
 			"valuation_method": valuation_method, "gst_hsn_code": i["gst_hsn_code"], self.key_field: i["key"],
 		}
+		if tag:
+			doc[COMPANY_FIELD] = tag
 		if i["uoms"]:
 			doc["uoms"] = [{"uom": i["stock_uom"], "conversion_factor": 1}, *i["uoms"]]
 		if i.get("item_tax_template"):
 			# The cloud only accepts an Item Tax Template on a line if the item (or its group) lists it.
 			doc["taxes"] = [{"item_tax_template": i["item_tax_template"]}]
-		self.client.insert("Item", doc)
+		return self.client.insert("Item", doc)["name"]
 
 	def _adopt(self, doctype: str, existing: dict, key: str, label: str):
 		current = existing.get(self.key_field)

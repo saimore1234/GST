@@ -126,6 +126,7 @@ class TestPush(unittest.TestCase):
 
 	def test_missing_cloud_tax_template_blocks(self):
 		self.ctx.cfg.template_map = {}
+		del self.cloud.docs["Company"][s.COMPANY_CFG["cloud_company"]]  # no abbreviation to guess with
 		result = self.svc.push(NAME)
 		self.assertEqual(result["outcome"], "Blocked")
 		self.assertIn("Output GST Out-state - TTC", result["problems"][0])
@@ -178,7 +179,9 @@ class TestPush(unittest.TestCase):
 		self.assertEqual(self.cloud.docs["Customer"]["CUST-CLOUD-7"]["sap_b1_key"], "DEV|Customer|CUST-0001")
 		self.assertEqual(len(self.cloud.docs["Customer"]), 1)
 
-	def test_customer_linked_elsewhere_is_conflict(self):
+	def test_customer_linked_elsewhere_is_conflict_in_shared_mode(self):
+		# GST service WITHOUT the company field: masters are shared, so a foreign-keyed customer is a conflict
+		self.cloud.missing_fields = {dt: {"aitsgst_company"} for dt in ("Customer", "Item", "Address")}
 		self.cloud.add("Customer", name="Acme Builders", customer_name="Acme Builders", sap_b1_key="OTHER|C1")
 		result = self.svc.push(NAME)
 		self.assertEqual(result["outcome"], "Blocked")

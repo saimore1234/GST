@@ -29,6 +29,7 @@ def validation(msg="Validation failed"):
 class FakeCloud:
 	def __init__(self):
 		self.igst_rate = 18  # rate in the cloud's tax template (tests change it to force a mismatch)
+		self.missing_fields = {}  # doctype -> fieldnames the GST service does NOT have (queries on them fail)
 		self.docs = defaultdict(dict)
 		self.calls = []
 		self.methods = {}
@@ -71,6 +72,9 @@ class FakeCloud:
 
 	def get_list(self, doctype, filters=None, fields=("name",), limit=20, order_by=None):
 		def action():
+			for f in filters or []:
+				if f[0] in self.missing_fields.get(doctype, set()):
+					raise CloudError(f"GST service error (417): Field not permitted in query: {f[0]}", 417)
 			rows = [d for d in self.docs[doctype].values() if all(_match(d, f) for f in filters or [])]
 			return [{f: d.get(f) for f in fields} for d in rows[:limit]]
 		return self._run("get_list", doctype, action)
@@ -93,6 +97,8 @@ class FakeCloud:
 				new["grand_total"] = round(net + sum(t["base_tax_amount"] for t in new.get("taxes") or []), 2)
 				new["rounded_total"] = round(new["grand_total"])
 			self.docs[doctype][new["name"]] = new
+			if doctype == "Custom Field":
+				self.missing_fields.get(new["dt"], set()).discard(new["fieldname"])
 			return copy.deepcopy(new)
 		return self._run("insert", doctype, action)
 
@@ -120,6 +126,8 @@ def _match(doc, f):
 		return actual in value
 	if op == ">":
 		return actual is not None and str(actual) > str(value)
+	if op == "is":
+		return bool(actual) if value == "set" else not actual
 	raise NotImplementedError(op)
 
 
@@ -211,7 +219,8 @@ def make_ctx(**cfg_overrides):
 
 
 def seed_cloud_setup(cloud: FakeCloud):
-	"""What a correctly configured cloud site has before the first push."""
+	"""What a correctly configured cloud site has before the first push (company field present)."""
+	cloud.add("Company", name=s.COMPANY_CFG["cloud_company"], abbr="TTCC")
 	cloud.add("UOM", name="Nos")
 	cloud.add("UOM", name="Box")
 	cloud.add("Stock Settings", name="Stock Settings", valuation_method="FIFO")

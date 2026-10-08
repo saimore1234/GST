@@ -92,6 +92,15 @@ Optionally add a cloud **Webhook** (Sales Invoice, on update / on cancel, *Enabl
 same secret as *Webhook Secret*) to `https://<local-site>/api/method/aitsgst.api.status_webhook`; it
 only triggers a re-read. Nothing is generated, submitted or cancelled automatically.
 
+**Several client companies on one GST service:** create one Company per client on the GST service and run
+**AITS GST Settings → Set up GST Service Fields** (or add by hand a Link field `aitsgst_company` → Company on
+Customer, Item and Address). From then on every Customer, Item and Address the app creates is tagged with the
+client's company, and only that company's records are ever matched or changed: two clients selling to the
+same buyer each get their own Customer (ERPNext names the second "<name> - 1"); an item code already used by
+another company becomes "<company abbr>-<code>". Give each client its own GST service API user with **User
+Permission Company = <its company>** (Apply To All Document Types), so a client's key cannot see other clients'
+data. Without the field, masters are shared (fine for a single client).
+
 **GSTIN autofill** (setting *Fill party details from GSTIN*, on by default): entering a GSTIN on a
 Customer, Supplier or Address - in the full form **and** in India Compliance's "+ Add" quick-entry popup -
 fills the legal name, GST category and registered address, looked up through the GST service (so the

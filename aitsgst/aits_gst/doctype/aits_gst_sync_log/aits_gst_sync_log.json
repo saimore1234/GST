@@ -28,7 +28,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Action",
-   "options": "Push\nRefresh\nE-Invoice\nE-Invoice Cancel\nE-Way Bill\nE-Way Bill Cancel\nUpdate Vehicle\nStatus Poll\nTest Connection\nWebhook",
+   "options": "Push\nRefresh\nE-Invoice\nE-Invoice Cancel\nE-Way Bill\nE-Way Bill Cancel\nUpdate Vehicle\nStatus Poll\nTest Connection\nSetup Fields\nCancel Everywhere\nWebhook",
    "read_only": 1
   },
   {
@@ -131,7 +131,7 @@
  "in_create": 1,
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-08 10:00:00.000000",
+ "modified": "2026-10-08 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "AITS GST",
  "name": "AITS GST Sync Log",
