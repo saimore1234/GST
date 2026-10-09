@@ -32,9 +32,20 @@ class FakeCloud:
 		self.missing_fields = {}  # doctype -> fieldnames the GST service does NOT have (queries on them fail)
 		self.docs = defaultdict(dict)
 		self.calls = []
-		self.methods = {}
+		self.allow_rename = True  # Sales Invoice "Allow Rename" in the GST service
+		self.methods = {"frappe.client.rename_doc": self._rename_doc}
 		self._failures = []
 		self._seq = 0
+
+	def _rename_doc(self, doctype, old_name, new_name, merge=False):
+		if not self.allow_rename:
+			raise CloudError(f"GST service error (417): {doctype} not allowed to be renamed", 417)
+		if new_name in self.docs[doctype]:
+			raise CloudError(f"GST service error (409): {doctype} {new_name} already exists", 409)
+		doc = self.docs[doctype].pop(old_name)
+		doc["name"] = new_name
+		self.docs[doctype][new_name] = doc
+		return new_name
 
 	# ------------------------------------------------------------ test setup
 	def add(self, doctype, **doc):

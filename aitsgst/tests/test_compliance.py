@@ -6,7 +6,7 @@ from aitsgst.tests import fakes
 from aitsgst.tests import samples as s
 
 NAME = "ACC-SINV-2026-00001"
-CLOUD = "SINV-CLOUD-1"
+CLOUD = NAME  # a prepared draft carries the local invoice number (the IRN / e-way bill document number)
 IRN = "a" * 64
 ROAD = {"mode_of_transport": "Road", "vehicle_no": "mh-12 ab 1234", "distance": 120}
 
@@ -77,6 +77,29 @@ class TestEInvoice(Base):
 		self.assertEqual(str(inv["aitsgst_ack_date"]), "2026-10-07 11:30:00")
 		self.assertEqual(inv["aitsgst_signed_qr_code"], "eyJhbGciOi.SIGNED.QR")
 		self.assertEqual((inv["aitsgst_einvoice_status"], inv["aitsgst_cloud_docstatus"]), ("Generated", "Submitted"))
+
+	def test_draft_with_service_number_takes_local_number_before_submit(self):
+		# prepared before drafts were renamed: the GST service named it from its own series
+		draft = self.cloud.docs["Sales Invoice"].pop(CLOUD)
+		self.cloud.add("Sales Invoice", **dict(draft, name="T/SD/1835/25-26"))
+		self.inv()["aitsgst_cloud_invoice"] = "T/SD/1835/25-26"
+
+		self.assertEqual(self.svc.generate_e_invoice(NAME, confirm=True)["outcome"], "Generated")
+		self.assertNotIn("T/SD/1835/25-26", self.cloud.docs["Sales Invoice"])
+		self.assertEqual(self.cloud_inv()["docstatus"], 1)
+		self.assertEqual(self.inv()["aitsgst_cloud_invoice"], NAME)
+
+	def test_rename_not_allowed_blocks_before_submit(self):
+		draft = self.cloud.docs["Sales Invoice"].pop(CLOUD)
+		self.cloud.add("Sales Invoice", **dict(draft, name="T/SD/1835/25-26"))
+		self.inv()["aitsgst_cloud_invoice"] = "T/SD/1835/25-26"
+		self.cloud.allow_rename = False
+
+		with self.assertRaises(Blocked) as ctx:
+			self.svc.generate_e_invoice(NAME, confirm=True)
+		self.assertTrue(any("Allow Rename" in p for p in ctx.exception.problems))
+		self.assertEqual(self.cloud.docs["Sales Invoice"]["T/SD/1835/25-26"]["docstatus"], 0)  # not submitted
+		self.assertEqual(self.cloud.count("call", f"{EINV}.generate_e_invoice"), 0)
 
 	def test_requires_confirmation_and_sends_nothing(self):
 		with self.assertRaises(ConfirmationRequired):

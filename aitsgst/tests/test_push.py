@@ -75,8 +75,34 @@ class TestPush(unittest.TestCase):
 		self.cloud.add("Sales Invoice", name="SINV-PORTAL-1", sap_b1_key="COFFERS|101", grand_total=1180,
 		               taxes=[{"account_head": "IGST", "base_tax_amount": 180}])
 		result = self.svc.push(NAME)
-		self.assertEqual((result["outcome"], result["cloud_invoice"]), ("Adopted", "SINV-PORTAL-1"))
+		self.assertEqual((result["outcome"], result["cloud_invoice"]), ("Adopted", NAME))  # draft takes the local number
+		self.assertEqual(list(self.cloud.docs["Sales Invoice"]), [NAME])
 		self.assertEqual(self.cloud.count("insert", "Sales Invoice"), 0)
+
+	def test_submitted_cloud_invoice_keeps_its_name(self):
+		self.cloud.add("Sales Invoice", name="SINV-PORTAL-1", sap_b1_key="DEV|" + NAME, docstatus=1, grand_total=1180)
+		result = self.svc.push(NAME)
+		self.assertEqual(result["cloud_invoice"], "SINV-PORTAL-1")
+		self.assertEqual(self.cloud.count("call", "frappe.client.rename_doc"), 0)
+
+	# ------------------------------------------------- document number
+	def test_created_draft_carries_local_invoice_number(self):
+		# India Compliance uses the invoice name as the IRN / e-way bill document number
+		result = self.svc.push(NAME)
+		self.assertEqual(result["cloud_invoice"], NAME)
+		self.assertEqual(list(self.cloud.docs["Sales Invoice"]), [NAME])
+		self.assertEqual(self.inv()["aitsgst_cloud_invoice"], NAME)
+
+	def test_rename_not_allowed_blocks_and_next_push_retries(self):
+		self.cloud.allow_rename = False
+		result = self.svc.push(NAME)
+		self.assertEqual(result["outcome"], "Blocked")
+		self.assertTrue(any("Allow Rename" in p for p in result["problems"]))
+
+		self.cloud.allow_rename = True  # administrator fixed the GST service
+		result = self.svc.push(NAME)
+		self.assertEqual((result["outcome"], result["cloud_invoice"]), ("Adopted", NAME))
+		self.assertEqual(self.cloud.count("insert", "Sales Invoice"), 1)  # the first draft was reused
 
 	def test_cancelled_cloud_invoice_is_not_adopted(self):
 		self.cloud.add("Sales Invoice", name="SINV-OLD", sap_b1_key="DEV|" + NAME, docstatus=2)

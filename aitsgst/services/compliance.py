@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 
 from aitsgst.core.cloud_client import CloudError
 from aitsgst.core.gst import STATES
-from aitsgst.services.push import docstatus_text
+from aitsgst.services.push import PushProblem, docstatus_text, use_local_number
 
 SI = "Sales Invoice"
 EINV = "india_compliance.gst_india.utils.e_invoice"
@@ -119,6 +119,7 @@ class ComplianceService:
 			                           "Generating an e-invoice registers this invoice with the GST portal and cannot be undone after 24 hours.")
 
 		with self.store.lock(name, "e-invoice"):
+			cloud_name = self._use_local_number("E-Invoice", si, cloud_name, doc)
 			try:
 				self._submit_if_draft(cloud_name, doc)
 				self.client.call(f"{EINV}.generate_e_invoice", docname=cloud_name)
@@ -195,6 +196,7 @@ class ComplianceService:
 			                           + (" and submits the draft invoice in the GST service." if doc.get("docstatus") == 0 else "."))
 
 		with self.store.lock(name, "e-waybill"):
+			cloud_name = self._use_local_number("E-Way Bill", si, cloud_name, doc)
 			try:
 				self._submit_if_draft(cloud_name, doc)
 				self.client.call(f"{EWB}.generate_e_waybill", doctype=SI, docname=cloud_name, values=clean)
@@ -652,6 +654,19 @@ class ComplianceService:
 			return self.client.get_doc(SI, cloud_name)
 		except CloudError:
 			return None
+
+	def _use_local_number(self, action, si, cloud_name, doc) -> str:
+		"""Before a draft is submitted, give it this invoice's number (the IRN / e-way bill document number)."""
+		try:
+			new_name = use_local_number(self.client, cloud_name, si["name"], doc.get("docstatus"))
+		except PushProblem as e:
+			self._log_blocked(action, si["name"], cloud_name, [str(e)])
+			raise Blocked("Nothing was submitted or sent to the GST portal.", str(e)) from e
+		if new_name != cloud_name:
+			self.store.update_invoice(si["name"], {"aitsgst_cloud_invoice": new_name},
+			                          comment=f"GST service record renamed to this invoice's number {new_name}.")
+			doc["name"] = new_name
+		return new_name
 
 	def _submit_if_draft(self, cloud_name, doc):
 		if doc.get("docstatus") == 0:

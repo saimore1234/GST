@@ -40,6 +40,10 @@ Make sure the scheduler is enabled (`bench --site <local-site> enable-scheduler`
    - Custom field **`sap_b1_key`** (Data, read only, no copy) on *Sales Invoice* (also *Unique*),
      *Customer*, *Address* and *Item*. If the SAP B1 Web Portal was already set up for this site
      (its "setup custom fields" action), these exist already.
+   - **Customize Form → Sales Invoice → tick "Allow Rename"**. The cloud names new invoices from its own
+     series, but India Compliance uses the invoice name as the IRN / e-way bill *Document No.*, so the app
+     renames each cloud draft to the local invoice number before it is submitted. Without this, Prepare /
+     Generate stops with a clear message and nothing is submitted.
    - India Compliance GST Settings: API enabled, e-Invoice / e-Waybill enabled, credentials for
      the company GSTIN, and **Sandbox Mode ON** until the checklist below passes.
 2. **Local site → AITS GST Settings** (System Manager):

@@ -45,6 +45,31 @@ def retry_delay(retry_count: int) -> timedelta:
 	return timedelta(minutes=RETRY_BASE_MINUTES * (2 ** retry_count))
 
 
+def use_local_number(client, cloud_name: str, local_name: str, docstatus) -> str:
+	"""India Compliance sends the Sales Invoice *name* as the document number of the IRN and the e-way bill,
+	but the GST service names new invoices from its own series. Rename the draft there to the local invoice
+	number so both registrations carry the number printed on the local invoice. Only a draft is renamed:
+	once submitted, the name is fixed. Returns the (possibly new) GST service name."""
+	if not cloud_name or not local_name or cloud_name == local_name or docstatus != 0:
+		return cloud_name
+	try:
+		return client.call("frappe.client.rename_doc", doctype=SI, old_name=cloud_name, new_name=local_name) or local_name
+	except CloudError as e:
+		if e.ambiguous and client.get_doc(SI, cloud_name) is None and client.get_doc(SI, local_name) is not None:
+			return local_name  # renamed before the connection dropped
+		message = (e.message or "").lower()
+		if "not allowed to be renamed" in message:
+			raise PushProblem(
+				f"The GST service record {cloud_name} must carry this invoice's number {local_name}, but Sales Invoice "
+				"cannot be renamed there. Ask your administrator to tick 'Allow Rename' for Sales Invoice in the "
+				"GST service (Customize Form), then prepare the e-invoice again.") from e
+		if "already exists" in message or "duplicate" in message:
+			raise PushProblem(
+				f"The GST service already has a Sales Invoice named {local_name}, so the record {cloud_name} cannot take "
+				"this invoice's number. Ask your administrator to check the GST service.") from e
+		raise
+
+
 class PushService:
 	def __init__(self, ctx):
 		self.cfg, self.client, self.store, self.log = ctx.cfg, ctx.client, ctx.store, ctx.log
@@ -82,11 +107,12 @@ class PushService:
 		try:
 			existing = self._find_by_key(SI, key, [["docstatus", "!=", 2]])
 			if existing:
-				return self._record(si, key, existing, "Adopted", plan.payload)
+				return self._record(si, key, self._local_number(si, existing), "Adopted", plan.payload)
 
 			self._prepare(plan, company_cfg)
 			created = self.client.insert(SI, plan.payload)
-			return self._record(si, key, created["name"], "Created", plan.payload, created)
+			cloud_name = use_local_number(self.client, created["name"], si["name"], created.get("docstatus"))
+			return self._record(si, key, cloud_name, "Created", plan.payload, created)
 		except PushProblem as e:
 			return self._blocked(si, [str(e)], plan.warnings, request=plan.payload)
 		except CloudError as e:
@@ -94,8 +120,15 @@ class PushService:
 				# The cloud may have saved the invoice before the connection dropped: look before failing.
 				saved = self._try_find_by_key(SI, key, [["docstatus", "!=", 2]])
 				if saved:
-					return self._record(si, key, saved, "Adopted", plan.payload)
+					try:
+						return self._record(si, key, self._local_number(si, saved), "Adopted", plan.payload)
+					except PushProblem as problem:
+						return self._blocked(si, [str(problem)], plan.warnings, request=plan.payload)
 			return self._failed(si, key, e, retry_count, plan.payload)
+
+	def _local_number(self, si: dict, cloud_name: str) -> str:
+		doc = self.client.get_doc(SI, cloud_name) or {}
+		return use_local_number(self.client, cloud_name, si["name"], doc.get("docstatus"))
 
 	# --------------------------------------------------------- prerequisites
 	def _prepare(self, plan, company_cfg):
