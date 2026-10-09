@@ -43,6 +43,7 @@ const aitsgst = {
 		if (ready && einv !== "Generated" && einv !== "Cancelled") add(__("Generate e-Invoice"), () => aitsgst.generate_e_invoice(frm));
 		if (ready && ewb !== "Generated") add(__("Generate e-Way Bill"), () => aitsgst.generate_e_waybill(frm));
 		if (ewb === "Generated") add(__("Update Vehicle (Part-B)"), () => aitsgst.update_vehicle(frm));
+		if (d.aitsgst_ewaybill && ["Generated", "Cancelled"].includes(ewb)) add(__("Print e-Way Bill"), () => aitsgst.print_e_waybill(frm));
 		if (einv === "Generated") add(__("Cancel e-Invoice"), () => aitsgst.cancel(frm, "cancel_e_invoice", __("Cancel e-Invoice (IRN)"),
 			__("The IRN is cancelled on the GST portal. This cannot be undone and this invoice number can never get a new IRN. Any e-way bill is cancelled with it.")));
 		if (ewb === "Generated") add(__("Cancel e-Way Bill"), () => aitsgst.cancel(frm, "cancel_e_waybill", __("Cancel e-Way Bill"),
@@ -161,6 +162,32 @@ const aitsgst = {
 				onsubmit: (values) => aitsgst.call(frm, "generate_e_waybill", { values, confirm: 1 }, __("Generating e-Way Bill...")),
 			});
 		});
+	},
+
+	print_e_waybill(frm) {
+		// Fetched as a blob, not opened as a link, so a failure shows as a message instead of raw JSON in a new tab.
+		const tab = window.open("", "_blank");
+		frappe.dom.freeze(__("Preparing e-Way Bill print..."));
+		fetch(`/api/method/aitsgst.api.print_e_waybill?name=${encodeURIComponent(frm.doc.name)}`, {
+			headers: { "X-Frappe-CSRF-Token": frappe.csrf_token },
+		})
+			.then(async (r) => {
+				if (r.ok && (r.headers.get("Content-Type") || "").includes("pdf")) {
+					const url = URL.createObjectURL(await r.blob());
+					if (tab) tab.location = url;
+					else window.location = url;
+					return;
+				}
+				if (tab) tab.close();
+				const body = await r.json().catch(() => ({}));
+				const messages = body._server_messages ? JSON.parse(body._server_messages).map((m) => JSON.parse(m).message) : [];
+				frappe.msgprint({ title: __("e-Way Bill"), indicator: "red", message: messages.join("<br>") || __("Could not print the e-way bill.") });
+			})
+			.catch(() => {
+				if (tab) tab.close();
+				frappe.msgprint({ title: __("e-Way Bill"), indicator: "red", message: __("Could not print the e-way bill.") });
+			})
+			.finally(() => frappe.dom.unfreeze());
 	},
 
 	update_vehicle(frm) {

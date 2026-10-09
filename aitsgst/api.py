@@ -144,6 +144,26 @@ def refresh_invoice(name: str):
 	return _run(lambda: ComplianceService(get_context()).refresh(name))
 
 
+E_WAYBILL_PRINT_FORMAT = "e-Waybill"
+
+
+@frappe.whitelist(methods=["GET"])
+def print_e_waybill(name: str):
+	"""The e-way bill PDF (India Compliance's e-Waybill print of the e-Waybill Log), served inline.
+	The GST service fetches the latest e-way bill data from the portal itself before printing."""
+	_guard(name)
+	ewaybill, status = frappe.db.get_value("Sales Invoice", name, ["aitsgst_ewaybill", "aitsgst_ewb_status"]) or (None, None)
+	if not ewaybill or status not in ("Generated", "Cancelled"):
+		frappe.throw(_("No e-way bill has been generated for this invoice."), title=_("e-Way Bill"))
+
+	pdf = _run(lambda: get_context().client.get_pdf("/api/method/frappe.utils.print_format.download_pdf", {
+		"doctype": "e-Waybill Log", "name": ewaybill, "format": E_WAYBILL_PRINT_FORMAT, "no_letterhead": 1,
+	}))
+	frappe.local.response.filename = f"e-Waybill_{ewaybill}.pdf"
+	frappe.local.response.filecontent = pdf
+	frappe.local.response.type = "pdf"
+
+
 @frappe.whitelist()
 def get_transport_defaults(name: str):
 	"""Pre-fill for the e-way bill dialog from the local invoice's India Compliance transport fields."""

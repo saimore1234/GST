@@ -126,6 +126,27 @@ class TestCloudClient(unittest.TestCase):
 		with self.assertRaises(CloudError):
 			c.get("/x")
 
+	def test_get_pdf(self):
+		pdf = FakeResponse(200, "")
+		pdf.content = b"%PDF-1.4 body"
+		c, session = client(pdf)
+		self.assertEqual(c.get_pdf("/api/method/print", {"name": "1"}), b"%PDF-1.4 body")
+		self.assertEqual(session.calls[0]["headers"]["Accept"], "application/pdf")
+
+		html = FakeResponse(200, "<html>login</html>")
+		html.content = b"<html>login</html>"
+		c, _ = client(html)
+		with self.assertRaises(CloudError):
+			c.get_pdf("/x")
+
+		denied = FakeResponse(403, {"exception": "No permission for e-Waybill Log"})
+		denied.content = denied.text.encode()
+		c, session = client(denied)
+		with self.assertRaises(CloudError) as e:
+			c.get_pdf("/x")
+		self.assertIn("e-Waybill Log", e.exception.message)
+		self.assertEqual(len(session.calls), 1)
+
 	def test_get_list_encodes_filters(self):
 		c, s = client(FakeResponse(200, {"data": [{"name": "SINV-9"}]}))
 		rows = c.get_list("Sales Invoice", [["sap_b1_key", "=", "A|1"]], ["name"], 1)

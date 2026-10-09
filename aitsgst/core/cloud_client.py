@@ -82,6 +82,17 @@ class CloudClient:
 			return None
 		return self._unwrap(status, body)
 
+	def get_pdf(self, path: str, params: dict | None = None) -> bytes:
+		"""A PDF body (e.g. a print). Read-only, but not retried: a slow render is not a flaky one."""
+		response = self._request("GET", path, params=params, accept="application/pdf")
+		content = response.content or b""
+		if 200 <= response.status_code < 300 and content.startswith(b"%PDF"):
+			return content
+		if 200 <= response.status_code < 300:
+			raise CloudError("GST service did not return a PDF.", response.status_code)
+		self._unwrap(response.status_code, response.text or "")
+		raise CloudError(f"GST service error ({response.status_code}).", response.status_code)
+
 	def post(self, path: str, body: dict):
 		status, text = self._send("POST", path, json_body=body)
 		return self._unwrap(status, text, require_body=True)
@@ -126,8 +137,12 @@ class CloudClient:
 
 	# ----------------------------------------------------------------- transport
 	def _send(self, method: str, path: str, params=None, json_body=None) -> tuple[int, str]:
+		response = self._request(method, path, params=params, json_body=json_body)
+		return response.status_code, response.text or ""
+
+	def _request(self, method: str, path: str, params=None, json_body=None, accept: str = "application/json"):
 		url = self.base_url + path
-		headers = {"Authorization": self._auth, "Accept": "application/json"}
+		headers = {"Authorization": self._auth, "Accept": accept}
 		try:
 			response = self.session.request(
 				method, url, params=params, json=json_body, headers=headers, timeout=self.timeout, allow_redirects=False
@@ -150,7 +165,7 @@ class CloudClient:
 			# Never follow redirects: one could downgrade to http or leak the token to another host.
 			raise CloudError(f"GST service redirected the request ({response.status_code}). Check the GST Service URL.",
 			                 response.status_code)
-		return response.status_code, response.text or ""
+		return response
 
 	def _unwrap(self, status: int, body: str, require_body: bool = False):
 		if 200 <= status < 300:
