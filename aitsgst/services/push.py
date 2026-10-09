@@ -61,8 +61,8 @@ def use_local_number(client, cloud_name: str, local_name: str, docstatus) -> str
 		if "not allowed to be renamed" in message:
 			raise PushProblem(
 				f"The GST service record {cloud_name} must carry this invoice's number {local_name}, but Sales Invoice "
-				"cannot be renamed there. Ask your administrator to tick 'Allow Rename' for Sales Invoice in the "
-				"GST service (Customize Form), then prepare the e-invoice again.") from e
+				"cannot be renamed there. Ask your administrator to turn on 'Allow Rename' for Sales Invoice in the "
+				"GST service (Property Setter: DocType Sales Invoice, property allow_rename, value 1), then try again.") from e
 		if "already exists" in message or "duplicate" in message:
 			raise PushProblem(
 				f"The GST service already has a Sales Invoice named {local_name}, so the record {cloud_name} cannot take "

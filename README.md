@@ -40,7 +40,9 @@ Make sure the scheduler is enabled (`bench --site <local-site> enable-scheduler`
    - Custom field **`sap_b1_key`** (Data, read only, no copy) on *Sales Invoice* (also *Unique*),
      *Customer*, *Address* and *Item*. If the SAP B1 Web Portal was already set up for this site
      (its "setup custom fields" action), these exist already.
-   - **Customize Form → Sales Invoice → tick "Allow Rename"**. The cloud names new invoices from its own
+   - **Allow Rename on Sales Invoice.** Customize Form (v15) has no such option, so create a *Property Setter*
+     (`/app/property-setter/new`): Apply On = DocType, DocType = Sales Invoice, Property = `allow_rename`,
+     Property Type = Check, Value = 1. The cloud names new invoices from its own
      series, but India Compliance uses the invoice name as the IRN / e-way bill *Document No.*, so the app
      renames each cloud draft to the local invoice number before it is submitted. Without this, Prepare /
      Generate stops with a clear message and nothing is submitted.
