@@ -95,7 +95,7 @@ class FakeCloud:
 			self._seq += 1
 			new = copy.deepcopy(doc)
 			# ERPNext autonames these by a field rather than a series.
-			name_field = {"Item": "item_code", "GST HSN Code": "hsn_code"}.get(doctype)
+			name_field = {"Item": "item_code", "GST HSN Code": "hsn_code", "Customer Group": "customer_group_name"}.get(doctype)
 			if name_field:
 				new.setdefault("name", doc[name_field])
 			new.setdefault("name", f"{doctype.split()[0].upper()}-{self._seq:04d}")

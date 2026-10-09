@@ -37,6 +37,9 @@ Make sure the scheduler is enabled (`bench --site <local-site> enable-scheduler`
    - Create an integration user (e.g. `aitsgst@yourco`) with roles *Accounts User*, *Sales User*,
      *Stock User* (to read UOM / Stock Settings) and permission to read *GST Settings*,
      *e-Invoice Log*, *e-Waybill Log*. Generate its API key / secret.
+     A new cloud Customer gets the local customer's Customer Group; if that group is missing on the cloud
+     it is created (under *All Customer Groups*), which needs create permission on *Customer Group*
+     (e.g. role *Sales Master Manager*). Without it, the configured / Selling Settings group is used.
    - Custom field **`sap_b1_key`** (Data, read only, no copy) on *Sales Invoice* (also *Unique*),
      *Customer*, *Address* and *Item*. If the SAP B1 Web Portal was already set up for this site
      (its "setup custom fields" action), these exist already.

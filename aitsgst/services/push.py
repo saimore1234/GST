@@ -250,7 +250,7 @@ class PushService:
 		if not c["create_if_missing"]:
 			raise PushProblem(f"Customer '{c['name']}' does not exist in the GST service and 'Create missing Customers' is off.")
 		doc = {
-			"customer_name": c["name"], "customer_type": c["customer_type"], "customer_group": self._customer_group(c["customer_group"]),
+			"customer_name": c["name"], "customer_type": c["customer_type"], "customer_group": self._customer_group(c["customer_group"], c.get("local_customer_group")),
 			"territory": c["territory"], "gst_category": c["gst_category"], self.key_field: c["key"],
 		}
 		if c.get("gstin"):
@@ -291,9 +291,12 @@ class PushService:
 			if item.get("item_tax_template"):
 				item["item_tax_template"] = resolve(ITEM_TAX_TEMPLATE, item["item_tax_template"])
 
-	def _customer_group(self, configured: str | None) -> str:
-		"""ERPNext rejects a group (tree folder) Customer Group such as "All Customer Groups". Use the
-		configured one if it is a leaf, else the GST service's own default from Selling Settings."""
+	def _customer_group(self, configured: str | None, local: str | None = None) -> str:
+		"""ERPNext rejects a group (tree folder) Customer Group such as "All Customer Groups". Use the local
+		customer's own group (created in the GST service if missing), else the configured one if it is a leaf,
+		else the GST service's own default from Selling Settings."""
+		if local and self._ensure_customer_group(local):
+			return local
 		doc = self.client.get_doc("Customer Group", configured) if configured else None
 		if doc and not doc.get("is_group"):
 			return configured
@@ -302,10 +305,27 @@ class PushService:
 		if default_doc and not default_doc.get("is_group"):
 			return default
 		raise PushProblem(
-			f"Customer Group '{configured}' is a group (or does not exist) in the GST service, and its Selling Settings "
+			(f"The customer's group '{local}' could not be used or created in the GST service, and c" if local else "C")
+			+ f"ustomer Group '{configured}' is a group (or does not exist) in the GST service, and its Selling Settings "
 			"has no non-group default Customer Group. Set a non-group Customer Group (e.g. Commercial) in "
 			"AITS GST Settings > Companies > GST Service Customer Group."
 		)
+
+	def _ensure_customer_group(self, name: str) -> bool:
+		"""True if the GST service has `name` as a non-group Customer Group, creating it there if missing.
+		A folder of that name, or no permission to create it, returns False so the fallbacks are used."""
+		doc = self.client.get_doc("Customer Group", name)
+		if doc is not None:
+			return not doc.get("is_group")
+		try:
+			self.client.insert("Customer Group", {
+				"customer_group_name": name, "parent_customer_group": "All Customer Groups", "is_group": 0,
+			})
+			return True
+		except CloudError as e:
+			# A timed-out insert may still have been saved
+			saved = self.client.get_doc("Customer Group", name) if e.ambiguous else None
+			return bool(saved) and not saved.get("is_group")
 
 	def _ensure_address(self, a: dict, customer_name: str) -> str:
 		found = self._find_by_key("Address", a["key"])

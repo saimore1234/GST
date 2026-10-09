@@ -187,6 +187,39 @@ class TestPush(unittest.TestCase):
 		[customer] = self.cloud.docs["Customer"].values()
 		self.assertEqual(customer["customer_group"], "Dealers")
 
+	def _local_customer_group(self, group):
+		self.store.docs[("Customer", "CUST-0001")]["customer_group"] = group
+
+	def test_local_customer_group_is_used_when_on_service(self):
+		self.cloud.add("Customer Group", name="Distributors", is_group=0)
+		self._local_customer_group("Distributors")
+		self.svc.push(NAME)
+		[customer] = self.cloud.docs["Customer"].values()
+		self.assertEqual(customer["customer_group"], "Distributors")
+		self.assertEqual(self.cloud.count("insert", "Customer Group"), 0)
+
+	def test_missing_local_customer_group_is_created_on_service(self):
+		self._local_customer_group("Distributors")
+		self.svc.push(NAME)
+		group = self.cloud.docs["Customer Group"]["Distributors"]
+		self.assertEqual((group["is_group"], group["parent_customer_group"]), (0, "All Customer Groups"))
+		[customer] = self.cloud.docs["Customer"].values()
+		self.assertEqual(customer["customer_group"], "Distributors")
+
+	def test_customer_group_creation_refused_falls_back(self):
+		self._local_customer_group("Distributors")
+		self.cloud.fail("insert", "Customer Group", fakes.CloudError("GST service error (403): Not permitted", 403))
+		self.assertEqual(self.svc.push(NAME)["outcome"], "Created")
+		[customer] = self.cloud.docs["Customer"].values()
+		self.assertEqual(customer["customer_group"], "Commercial")  # Selling Settings default
+
+	def test_local_customer_group_that_is_a_folder_on_service_falls_back(self):
+		self.cloud.add("Customer Group", name="Distributors", is_group=1)
+		self._local_customer_group("Distributors")
+		self.svc.push(NAME)
+		[customer] = self.cloud.docs["Customer"].values()
+		self.assertEqual(customer["customer_group"], "Commercial")
+
 	def test_no_usable_customer_group_blocks_clearly(self):
 		self.cloud.docs["Selling Settings"]["Selling Settings"]["customer_group"] = None
 		result = self.svc.push(NAME)

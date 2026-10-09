@@ -110,6 +110,7 @@ def build_push_plan(
 			"gst_category": customer.get("gst_category") or gst_category,
 			"gstin": normalize_gstin(customer.get("gstin")) or customer_gstin,
 			"customer_group": cfg.get("customer_group") or "All Customer Groups",
+			"local_customer_group": customer.get("customer_group"),
 			"territory": cfg.get("territory") or "All Territories",
 			"create_if_missing": bool(cfg.get("auto_create_customer")),
 		}
